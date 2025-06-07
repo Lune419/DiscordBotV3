@@ -4,6 +4,7 @@ from discord.ext import commands
 from discord import Intents
 from dotenv import load_dotenv
 import time
+from datetime import datetime, timezone, timedelta
 
 load_dotenv()
 
@@ -23,7 +24,8 @@ for filename in os.listdir("./cogs"):
         
 @bot.event
 async def on_ready():
-    print(f'以下身份登入: {bot.user.name} - {bot.user.id}')
+    current_time = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+    print(f'現在時間:{current_time} - 以下身份登入: {bot.user.name} - {bot.user.id}')
     synced = await bot.tree.sync()
     print(f"同步了 {len(synced)} 個指令:")
     for command in synced:
