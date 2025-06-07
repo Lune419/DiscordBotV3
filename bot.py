@@ -14,7 +14,7 @@ intents = Intents.all()
     
 class Bot(commands.Bot):
     def __init__(self):
-        commands.Bot.__init__(self, command_prefix=config['prefix'], intents=intents, help_command=None)
+        super().__init__(command_prefix=config['prefix'], intents=intents, help_command=None)
 
     async def load_extensions(self):
         for filename in os.listdir("./cogs"):
@@ -28,14 +28,13 @@ class Bot(commands.Bot):
     async def setup_hook(self):
         await self.load_extensions()
         try:
-
             await self.tree.sync(guild=Object(config['guild_id']))  # 同步到特定伺服器
-
+            """
             synced = await self.tree.sync()
             print(f"已同步 {len(synced)} 個指令")
             for command in synced:
                 print(f"- {command.name}")
-
+            """
         except Exception as e:
             print(f"同步時發生錯誤: {e}")
     
