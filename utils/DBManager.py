@@ -1,28 +1,3 @@
-"""
-db_manager.py - SQLite 資料庫管理程式
-功能說明：
-  1. 使用 aiosqlite 提供非同步操作，適用於 Discord Bot 或其他 asyncio 應用
-  2. 提供 AsyncDBManager 類別，可由其他程式直接 import
-  3. CLI 僅在直接執行時啟動，透過 asyncio.run
-
-範例（匯入模組）：
-    from db_manager import AsyncDBManager
-    import asyncio
-
-    async def run():
-        db = AsyncDBManager('bot.db')
-        await db.init_db()
-        await db.add_punishment(guild_id=1, user_id=42, punished_at=1654567890,
-                                 ptype='warn', reason='不當發言')
-    asyncio.run(run())
-
-CLI 用法：
-  python db_manager.py init-db --db bot.db
-  python db_manager.py add-punishment --db bot.db --guild 1 --user 2 --time 1654567890 --type warn --reason "測試"
-"""
-
-__all__ = ['DBManager']
-
 import aiosqlite
 import argparse
 import asyncio
@@ -32,19 +7,36 @@ import dotenv
 from typing import Optional, List, Any
 
 class DBManager:
-    """非同步資料庫管理類別"""
+    """
+    非同步資料庫管理類別。
+    用於管理 Discord Bot 所需的 SQLite 資料表，包含處分紀錄、伺服器事件、伺服器設定等 CRUD 操作。
+    實例僅適用於單一資料庫檔案，非多執行緒安全。
+    """
     def __init__(self, db_path: str):
+        """
+        初始化 DBManager 實例。
+        參數:
+            db_path: 資料庫檔案路徑。
+        若環境變數 'database' 存在則優先使用。
+        """
         self.db_path = os.getenv('database', db_path)
         self.conn: Optional[aiosqlite.Connection] = None
 
     async def connect(self) -> None:
-        """建立連線並設定 row_factory"""
+        """
+        建立與 SQLite 資料庫的非同步連線，並設定 row_factory 以便回傳 dict-like row。
+        僅於尚未連線時執行。
+        """
         if self.conn is None:
             self.conn = await aiosqlite.connect(self.db_path)
             self.conn.row_factory = aiosqlite.Row
 
     async def init_db(self) -> None:
-        """初始化資料表與索引"""
+        """
+        初始化所有資料表與索引。
+        若資料表不存在則建立。
+        僅需於資料庫首次建立時呼叫。
+        """
         await self.connect()
         async with self.conn.cursor() as cur:
             await cur.execute(
@@ -55,6 +47,7 @@ class DBManager:
                     user_id      INTEGER NOT NULL,
                     punished_at  INTEGER NOT NULL,
                     type         TEXT    NOT NULL,
+                    admin_id     INTEGER NOT NULL,
                     reason       TEXT
                 )
                 """
@@ -101,42 +94,96 @@ class DBManager:
 
     # --------- punishments CRUD ---------
     async def add_punishment(
-        self, guild_id: int, user_id: int, punished_at: int,
-        ptype: str, reason: Optional[str]
+        self, *,guild_id: int, user_id: int, punished_at: int,
+        ptype: str, reason: Optional[str],admin_id:int
     ) -> None:
-        """新增處分紀錄"""
+        """
+        新增一筆處分紀錄。
+        參數:
+            guild_id: 伺服器 ID
+            user_id: 被處分用戶 ID
+            punished_at: 處分時間 (UNIX timestamp)
+            ptype: 處分類型
+            reason: 處分原因 (可為 None)
+            admin_id: 處分管理員 ID
+        """
         await self.connect()
         await self.conn.execute(
-            "INSERT INTO punishments (guild_id, user_id, punished_at, type, reason) VALUES (?, ?, ?, ?, ?)",
-            (guild_id, user_id, punished_at, ptype, reason)
+            "INSERT INTO punishments (guild_id, user_id, punished_at, type, reason, admin_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (guild_id, user_id, punished_at, ptype, reason, admin_id)
         )
         await self.conn.commit()
 
     async def list_punishments(
-        self, guild_id: int, user_id: Optional[int] = None,
+        self,
+        *,
+        guild_id: int,
+        user_id: Optional[int] = None,
+        ptype: Optional[str] = None,
+        start_ts: Optional[int] = None,  # UNIX 時間戳，單位秒
         limit: int = 100
     ) -> List[aiosqlite.Row]:
-        """查詢處分紀錄"""
+        """
+        查詢處分紀錄。
+        可依 guild_id、user_id、處分類型 ptype、起始 UNIX 時間戳 start_ts 篩選。
+        參數:
+            guild_id: 伺服器 ID (必填)
+            user_id: 用戶 ID (可選)
+            ptype: 處分類型 (可選)
+            start_ts: 起始時間 (可選)
+            limit: 回傳筆數上限 (預設 100)
+        回傳:
+            aiosqlite.Row 組成的 list。
+        """
         await self.connect()
+
+        # 1. 動態組裝 WHERE 子句和參數
+        conditions = ["guild_id = ?"]
+        params = [guild_id]
+
         if user_id is not None:
-            cursor = await self.conn.execute(
-                "SELECT * FROM punishments WHERE guild_id = ? AND user_id = ? ORDER BY punished_at DESC LIMIT ?",
-                (guild_id, user_id, limit)
-            )
-        else:
-            cursor = await self.conn.execute(
-                "SELECT * FROM punishments WHERE guild_id = ? ORDER BY punished_at DESC LIMIT ?",
-                (guild_id, limit)
-            )
+            conditions.append("user_id = ?")
+            params.append(user_id)
+
+        if ptype is not None:
+            conditions.append("type = ?")
+            params.append(ptype)
+
+        if start_ts is not None:
+            # 直接比較 punished_at（假設為 INTEGER UNIX 時間戳）
+            conditions.append("punished_at >= ?")
+            params.append(start_ts)
+
+        # 2. 合併 SQL
+        where_clause = " AND ".join(conditions)
+        sql = f"""
+            SELECT *
+            FROM punishments
+            WHERE {where_clause}
+            ORDER BY punished_at DESC
+            LIMIT ?
+        """
+        params.append(limit)
+
+        # 3. 執行並回傳
+        cursor = await self.conn.execute(sql, params)
         rows = await cursor.fetchall()
         return rows
+
 
     # --------- server_events CRUD ---------
     async def add_event(
         self, guild_id: int, event_type: str, event_time: int,
         user_id: Optional[int] = None
     ) -> None:
-        """新增伺服器事件"""
+        """
+        新增一筆伺服器事件。
+        參數:
+            guild_id: 伺服器 ID
+            event_type: 事件類型
+            event_time: 事件發生時間 (UNIX timestamp)
+            user_id: 相關用戶 ID (可為 None)
+        """
         await self.connect()
         await self.conn.execute(
             "INSERT INTO server_events (guild_id, user_id, event_type, event_time) VALUES (?, ?, ?, ?)",
@@ -148,7 +195,15 @@ class DBManager:
         self, guild_id: int, user_id: Optional[int] = None,
         limit: int = 100
     ) -> List[aiosqlite.Row]:
-        """查詢伺服器事件"""
+        """
+        查詢伺服器事件。
+        參數:
+            guild_id: 伺服器 ID
+            user_id: 用戶 ID (可選)
+            limit: 回傳筆數上限 (預設 100)
+        回傳:
+            aiosqlite.Row 組成的 list。
+        """
         await self.connect()
         if user_id is not None:
             cursor = await self.conn.execute(
@@ -170,7 +225,17 @@ class DBManager:
         message_log_channel: Optional[int] = None,
         anti_dive_channel: Optional[int] = None
     ) -> None:
-        """設定或更新伺服器配置"""
+        """
+        設定或更新伺服器配置。
+        參數:
+            guild_id: 伺服器 ID
+            notify_channel: 通知頻道 ID (可選)
+            voice_log_channel: 語音紀錄頻道 ID (可選)
+            member_log_channel: 成員紀錄頻道 ID (可選)
+            message_log_channel: 訊息紀錄頻道 ID (可選)
+            anti_dive_channel: 反潛水頻道 ID (可選)
+        若該 guild_id 已存在則更新，否則新增。
+        """
         await self.connect()
         cursor = await self.conn.execute(
             "SELECT 1 FROM server_settings WHERE guild_id = ?", (guild_id,)
@@ -203,7 +268,13 @@ class DBManager:
         await self.conn.commit()
 
     async def get_settings(self, guild_id: int) -> Optional[aiosqlite.Row]:
-        """取得伺服器配置"""
+        """
+        取得指定伺服器的設定。
+        參數:
+            guild_id: 伺服器 ID
+        回傳:
+            aiosqlite.Row 或 None。
+        """
         await self.connect()
         cursor = await self.conn.execute(
             "SELECT * FROM server_settings WHERE guild_id = ?", (guild_id,)
