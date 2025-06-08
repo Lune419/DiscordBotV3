@@ -1,7 +1,4 @@
 import aiosqlite
-import argparse
-import asyncio
-import sys
 import os
 import dotenv
 from typing import Optional, List, Any
@@ -9,7 +6,7 @@ from typing import Optional, List, Any
 class DBManager:
     """
     非同步資料庫管理類別。
-    用於管理 Discord Bot 所需的 SQLite 資料表，包含處分紀錄、伺服器事件、伺服器設定等 CRUD 操作。
+    用於管理 Discord Bot 所需的 SQLite 資料表。
     實例僅適用於單一資料庫檔案，非多執行緒安全。
     """
     def __init__(self, db_path: str):
