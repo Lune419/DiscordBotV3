@@ -1,12 +1,17 @@
 import discord
+import json
 from discord.ext import commands
 from discord import app_commands
 import time
+
+with open("config.json", "r", encoding="utf-8") as fp:
+    cfg = json.load(fp)
 
 class Ping(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
     @app_commands.command(name="ping", description="顯示機器人的延遲")
     async def ping(self, interaction: discord.Interaction):
         """顯示機器人與Discord之間的延遲"""

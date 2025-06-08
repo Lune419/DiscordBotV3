@@ -1,55 +1,50 @@
-import os
-import json
+import asyncio, os, json, logging, discord
 from discord.ext import commands
-from discord import Intents,Object
-from dotenv import load_dotenv
-from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
+from datetime import datetime
+from utils.DBManager import DBManager
 
-load_dotenv()
+with open("config.json", "r", encoding="utf-8") as fp:
+    cfg = json.load(fp)
 
-with open('config.json', 'r',encoding="utf-8") as f:
-    config = json.load(f)
+intents = discord.Intents.all()
 
-intents = Intents.all()
-    
 class Bot(commands.Bot):
-    def __init__(self):
-        super().__init__(command_prefix=config['prefix'], intents=intents, help_command=None)
+    def __init__(self) -> None:
+        super().__init__(command_prefix=cfg["prefix"],intents=intents,help_command=None)
+        self.db_manager = DBManager(os.getenv('database', 'bot.db'))
 
-    async def load_extensions(self):
-        for filename in os.listdir("./cogs"):
-            try:
-                if filename.endswith(".py"):
-                    await self.load_extension(f"cogs.{filename[:-3]}")
-                    # print(f"已載入 {filename}")
-            except Exception as e:
-                print(f"無法載入 {filename}: {e}")
-        
-    async def setup_hook(self):
-        await self.load_extensions()
-        try:
-            await self.tree.sync(guild=Object(config['guild_id']))  # 同步到特定伺服器
-            """
-            synced = await self.tree.sync()
-            print(f"已同步 {len(synced)} 個指令")
-            for command in synced:
-                print(f"- {command.name}")
-            """
-        except Exception as e:
-            print(f"同步時發生錯誤: {e}")
-    
-    async def on_ready(self):
-        current_time = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
-        print(f'現在時間:{current_time} - 以下身份登入: {self.user.name} - {self.user.id}')
-        command_list = await self.tree.fetch_commands()
-        print(f"已註冊 {len(command_list)} 個指令:")
-        for command in command_list:
-            print(f"- {command.name} (ID: {command.id})")
-            
-bot = Bot()
+    async def setup_hook(self) -> None:
+        # 清掉垃圾(已刪除或不需要的命令)
+        # self.tree.clear_commands(guild=guild)
+        # 載入擴充
+        for f in os.listdir("./cogs"):
+            if f.endswith(".py") and not f.startswith("_"):
+                try:
+                    await self.load_extension(f"cogs.{f[:-3]}")
+                    print(f"✅ 已載入擴充: {f[:-3]}")
+                except Exception as e:
+                    print(f"❌ 無法載入擴充 {f[:-3]}: {e}")
+                    continue
+        print("✅ 擴充載入完畢")
 
-if __name__ == "__main__": 
-    try:
-        bot.run(os.getenv('TOKEN'))
-    except Exception as e:
-        print(f"啟動時發生錯誤: {e}")
+        # 初始化資料庫
+        await self.db_manager.init_db()
+
+        guild= discord.Object(id=cfg["guild_id"])
+        # 同步指令
+        synced = await self.tree.sync(guild=guild)
+        print(f'已同步{len(synced)}個指令')
+
+    async def on_ready(self) -> None:
+        now = datetime.now(ZoneInfo(cfg['timezone'])).strftime("%F %T")
+        print(f"{now} | 登入為 {self.user} ({self.user.id})")
+
+async def main() -> None:
+    logging.basicConfig(level=logging.INFO)
+    discord.utils.setup_logging()
+    async with Bot() as bot:
+        await bot.start(os.getenv("TOKEN"))
+
+if __name__ == "__main__":
+    asyncio.run(main())
