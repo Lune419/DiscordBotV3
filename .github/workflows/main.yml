@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 檢出程式碼
+        uses: actions/checkout@v4
+
+      - name: 安裝 Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: 安裝依賴
+        run: |
+          python -m pip install --upgrade pip
+          pip install black flake8 isort mypy pre-commit
+
+      - name: isort 檢查 Import 排序
+        run: isort --check-only .
+
+      - name: black 檢查排版
+        run: black --check .
+
+      - name: flake8 Lint
+        run: flake8 .
+
+      - name: mypy 型別檢查
+        run: mypy src/
+
+      - name: pre‑commit hooks
+        uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --all-files
