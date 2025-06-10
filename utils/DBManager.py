@@ -2,7 +2,6 @@ import os
 from typing import Any, List, Optional
 
 import aiosqlite
-import dotenv
 
 
 class DBManager:
@@ -11,6 +10,7 @@ class DBManager:
     用於管理 Discord Bot 所需的 SQLite 資料表。
     實例僅適用於單一資料庫檔案，非多執行緒安全。
     """
+
     def __init__(self, db_path: str):
         """
         初始化 DBManager 實例。
@@ -18,7 +18,7 @@ class DBManager:
             db_path: 資料庫檔案路徑。
         若環境變數 'database' 存在則優先使用。
         """
-        self.db_path = os.getenv('database', db_path)
+        self.db_path = os.getenv("database", db_path)
         self.conn: Optional[aiosqlite.Connection] = None
 
     async def connect(self) -> None:
@@ -93,8 +93,14 @@ class DBManager:
 
     # --------- punishments CRUD ---------
     async def add_punishment(
-        self, *,guild_id: int, user_id: int, punished_at: int,
-        ptype: str, reason: Optional[str],admin_id:int
+        self,
+        *,
+        guild_id: int,
+        user_id: int,
+        punished_at: int,
+        ptype: str,
+        reason: Optional[str],
+        admin_id: int,
     ) -> None:
         """
         新增一筆處分紀錄。
@@ -109,7 +115,7 @@ class DBManager:
         await self.connect()
         await self.conn.execute(
             "INSERT INTO punishments (guild_id, user_id, punished_at, type, reason, admin_id) VALUES (?, ?, ?, ?, ?, ?)",
-            (guild_id, user_id, punished_at, ptype, reason, admin_id)
+            (guild_id, user_id, punished_at, ptype, reason, admin_id),
         )
         await self.conn.commit()
 
@@ -120,7 +126,7 @@ class DBManager:
         user_id: Optional[int] = None,
         ptype: Optional[str] = None,
         start_ts: Optional[int] = None,  # UNIX 時間戳，單位秒
-        limit: int = 100
+        limit: int = 100,
     ) -> List[aiosqlite.Row]:
         """
         查詢處分紀錄。
@@ -169,11 +175,13 @@ class DBManager:
         rows = await cursor.fetchall()
         return rows
 
-
     # --------- server_events CRUD ---------
     async def add_event(
-        self, guild_id: int, event_type: str, event_time: int,
-        user_id: Optional[int] = None
+        self,
+        guild_id: int,
+        event_type: str,
+        event_time: int,
+        user_id: Optional[int] = None,
     ) -> None:
         """
         新增一筆伺服器事件。
@@ -186,13 +194,12 @@ class DBManager:
         await self.connect()
         await self.conn.execute(
             "INSERT INTO server_events (guild_id, user_id, event_type, event_time) VALUES (?, ?, ?, ?)",
-            (guild_id, user_id, event_type, event_time)
+            (guild_id, user_id, event_type, event_time),
         )
         await self.conn.commit()
 
     async def list_events(
-        self, guild_id: int, user_id: Optional[int] = None,
-        limit: int = 100
+        self, guild_id: int, user_id: Optional[int] = None, limit: int = 100
     ) -> List[aiosqlite.Row]:
         """
         查詢伺服器事件。
@@ -207,22 +214,24 @@ class DBManager:
         if user_id is not None:
             cursor = await self.conn.execute(
                 "SELECT * FROM server_events WHERE guild_id = ? AND user_id = ? ORDER BY event_time DESC LIMIT ?",
-                (guild_id, user_id, limit)
+                (guild_id, user_id, limit),
             )
         else:
             cursor = await self.conn.execute(
                 "SELECT * FROM server_events WHERE guild_id = ? ORDER BY event_time DESC LIMIT ?",
-                (guild_id, limit)
+                (guild_id, limit),
             )
         return await cursor.fetchall()
 
     # --------- server_settings CRUD ---------
     async def set_settings(
-        self, guild_id: int, notify_channel: Optional[int] = None,
+        self,
+        guild_id: int,
+        notify_channel: Optional[int] = None,
         voice_log_channel: Optional[int] = None,
         member_log_channel: Optional[int] = None,
         message_log_channel: Optional[int] = None,
-        anti_dive_channel: Optional[int] = None
+        anti_dive_channel: Optional[int] = None,
     ) -> None:
         """
         設定或更新伺服器配置。
@@ -248,7 +257,7 @@ class DBManager:
                 ("voice_log_channel", voice_log_channel),
                 ("member_log_channel", member_log_channel),
                 ("message_log_channel", message_log_channel),
-                ("anti_dive_channel", anti_dive_channel)
+                ("anti_dive_channel", anti_dive_channel),
             ]:
                 if val is not None:
                     fields.append(f"{key} = ?")
@@ -257,12 +266,27 @@ class DBManager:
                 params.append(guild_id)
                 await self.conn.execute(
                     f"UPDATE server_settings SET {', '.join(fields)} WHERE guild_id = ?",
-                    tuple(params)
+                    tuple(params),
                 )
         else:
             await self.conn.execute(
-                "INSERT INTO server_settings (guild_id, notify_channel, voice_log_channel, member_log_channel, message_log_channel, anti_dive_channel) VALUES (?, ?, ?, ?, ?, ?)",
-                (guild_id, notify_channel, voice_log_channel, member_log_channel, message_log_channel, anti_dive_channel)
+                """
+                INSERT INTO server_settings
+                (guild_id, notify_channel,
+                voice_log_channel,
+                member_log_channel,
+                message_log_channel,
+                anti_dive_channel)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    guild_id,
+                    notify_channel,
+                    voice_log_channel,
+                    member_log_channel,
+                    message_log_channel,
+                    anti_dive_channel,
+                ),
             )
         await self.conn.commit()
 
