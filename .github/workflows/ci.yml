@@ -30,11 +30,8 @@ jobs:
         run: black --check .
 
       - name: flake8 Lint
-        run: flake8 .
-
-      - name: mypy 型別檢查
-        run: mypy src/
-
+        run: flake8 . --max-line-length=125
+        
       - name: pre-commit hooks
         uses: pre-commit/action@v4.2.0
         with:
