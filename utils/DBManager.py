@@ -1,7 +1,9 @@
-import aiosqlite
 import os
+from typing import Any, List, Optional
+
+import aiosqlite
 import dotenv
-from typing import Optional, List, Any
+
 
 class DBManager:
     """
