@@ -2,9 +2,7 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import discord
 from discord.ext import commands
@@ -48,8 +46,7 @@ class Bot(commands.Bot):
         log.info(f"已同步{len(synced)}個指令")
 
     async def on_ready(self) -> None:
-        now = datetime.now(ZoneInfo(cfg["timezone"])).strftime("%F %T")
-        log.info(f"{now} | 登入為 {self.user} ({self.user.id})")
+        log.info(f"登入為 {self.user} ({self.user.id})")
 
 
 async def main() -> None:
