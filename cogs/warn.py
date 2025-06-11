@@ -19,10 +19,10 @@ class Warn(commands.Cog):
         self.DBManager = bot.db_manager
 
     @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
-    @app_commands.has_permissions(administrator=True, manage_messages=True)
+    @app_commands.checks.has_permissions(administrator=True, manage_messages=True)
     @app_commands.command(name="warn", description="發送並記錄警告")
     @app_commands.describe(
-        user="要警告的用戶", reason="警告原因", sendmessage="是否發送私訊給被警告的用戶"
+        user="要警告的用戶", reason="警告原因", send_message="是否發送私訊給被警告的用戶"
     )
     async def warn(
         self,
@@ -99,7 +99,7 @@ class Warn(commands.Cog):
             )
 
     @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
-    @app_commands.has_permissions(administrator=True, manage_messages=True)
+    @app_commands.checks.has_permissions(administrator=True, manage_messages=True)
     @app_commands.command(name="warns", description="查詢用戶的警告紀錄")
     @app_commands.describe(user="要查詢的用戶", recently="是否只查詢最近30天的警告紀錄")
     async def warns(
