@@ -31,7 +31,7 @@ class PM(commands.Cog):
 
         try:
             if anonymous:
-                title = f"你收到一則匿名訊息"
+                title = "你收到一則匿名訊息"
                 desc = message
             else:
                 title = f"你收到來自 {sender.display_name} 的私訊"
