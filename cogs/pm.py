@@ -1,4 +1,5 @@
 import json
+import logging
 
 import discord
 from discord import app_commands
@@ -7,6 +8,7 @@ from discord.ext import commands
 with open("config.json", "r", encoding="utf-8") as fp:
     cfg = json.load(fp)
 
+log = logging.getLogger(__name__)
 
 class PM(commands.Cog):
     def __init__(self, bot):
@@ -24,22 +26,30 @@ class PM(commands.Cog):
         message: str,
         anonymous: bool = False,
     ):
-        """發送訊息給指定用戶(可選擇匿名)
-        """
+        """ 發送訊息給指定用戶(可選擇匿名) """
+        sender = interaction.user
+
         try:
             if anonymous:
-                dm_content = f"你收到一則匿名訊息：\n{message}"
+                title = f"你收到一則匿名訊息"
+                desc = message
             else:
-                sender = interaction.user
-                dm_content = f"你收到來自 {sender.mention} 的私訊：\n{message}"
-            await user.send(dm_content)
+                title = f"你收到來自 {sender.display_name} 的私訊"
+                desc = message
+
+            embed = discord.Embed(title=title, description=desc, color=discord.Color.blue())    
+            await user.send(embed=embed)
+            sender_title = f"已私訊 {user.display_name}!"
+            sender_embed = discord.Embed(title=sender_title, description=desc, color=discord.Color.blue())
             await interaction.response.send_message(
-                f"已私訊 {user.mention}!: \n{message}", ephemeral=True
+                embed=sender_embed, ephemeral=True
             )
         except discord.Forbidden:
             await interaction.response.send_message(
                 "無法私訊該用戶（可能關閉了私訊）", ephemeral=True
             )
+        except :
+            logging.exception("執行指令時發生錯誤")
 
 
 async def setup(bot):
