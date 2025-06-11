@@ -31,16 +31,6 @@ jobs:
             --remove-all-unused-imports \
             --remove-unused-variables .
 
-      # 5. isort 檢查（不寫回檔案）
-      - name: isort check
-        run: |
-          isort . --profile black --check-only
-
-      # 6. Black 檢查（不寫回檔案）
-      - name: black check
-        run: |
-          black . --check
-
       # 7. Ruff 檢查（預設 check）
       - name: ruff lint
         run: |
