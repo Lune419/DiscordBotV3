@@ -48,7 +48,7 @@ class PM(commands.Cog):
             await interaction.response.send_message(
                 "無法私訊該用戶（可能關閉了私訊）", ephemeral=True
             )
-        except :
+        except Exception:
             logging.exception("執行指令時發生錯誤")
 
 
