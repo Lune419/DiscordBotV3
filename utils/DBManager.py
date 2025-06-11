@@ -47,7 +47,8 @@ class DBManager:
                     punished_at  INTEGER NOT NULL,
                     type         TEXT    NOT NULL,
                     admin_id     INTEGER NOT NULL,
-                    reason       TEXT
+                    reason       TEXT,
+                    duration     INTEGER
                 )
                 """
             )
@@ -111,10 +112,11 @@ class DBManager:
             ptype: 處分類型
             reason: 處分原因 (可為 None)
             admin_id: 處分管理員 ID
+            duration: 處分持續時間 (可為 None)
         """
         await self.connect()
         await self.conn.execute(
-            "INSERT INTO punishments (guild_id, user_id, punished_at, type, reason, admin_id) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO punishments (guild_id, user_id, punished_at, type, reason, admin_id, duration) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (guild_id, user_id, punished_at, ptype, reason, admin_id),
         )
         await self.conn.commit()
