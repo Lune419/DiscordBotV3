@@ -102,6 +102,7 @@ class DBManager:
         ptype: str,
         reason: Optional[str],
         admin_id: int,
+        duration: Optional[int] = None,
     ) -> None:
         """
         新增一筆處分紀錄。
@@ -117,7 +118,7 @@ class DBManager:
         await self.connect()
         await self.conn.execute(
             "INSERT INTO punishments (guild_id, user_id, punished_at, type, reason, admin_id, duration) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (guild_id, user_id, punished_at, ptype, reason, admin_id),
+            (guild_id, user_id, punished_at, ptype, reason, admin_id, duration),
         )
         await self.conn.commit()
 
