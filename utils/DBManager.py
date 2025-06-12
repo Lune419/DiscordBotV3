@@ -128,52 +128,38 @@ class DBManager:
         guild_id: int,
         user_id: Optional[int] = None,
         ptype: Optional[str] = None,
-        start_ts: Optional[int] = None,  # UNIX 時間戳，單位秒
-        limit: int = 100,
+        start_ts: Optional[int] = None,
+        limit: Optional[int] = 100,
     ) -> List[aiosqlite.Row]:
-        """
-        查詢處分紀錄。
-        可依 guild_id、user_id、處分類型 ptype、起始 UNIX 時間戳 start_ts 篩選。
-        參數:
-            guild_id: 伺服器 ID (必填)
-            user_id: 用戶 ID (可選)
-            ptype: 處分類型 (可選)
-            start_ts: 起始時間 (可選)
-            limit: 回傳筆數上限 (預設 100)
-        回傳:
-            aiosqlite.Row 組成的 list。
+        """查詢懲罰紀錄
+
+        Args:
+            guild_id (int): 伺服器 ID.
+            user_id (Optional[int]): 被處分用戶 ID (可選).
+            ptype (Optional[str]): 處分類型 (可選).
+            start_ts (Optional[int]): 起始時間戳，只回傳 >= 此值的紀錄 (可選).
+            limit (Optional[int]): 最大回傳筆數, 預設 100 (可選).
+
+        Returns:
+            List[aiosqlite.Row]: 查詢結果的列列表.
         """
         await self.connect()
-
-        # 1. 動態組裝 WHERE 子句和參數
-        conditions = ["guild_id = ?"]
-        params = [guild_id]
-
+        sql = "SELECT * FROM punishments WHERE guild_id = ?"
+        params: list[Any] = [guild_id]
         if user_id is not None:
-            conditions.append("user_id = ?")
+            sql += " AND user_id = ?"
             params.append(user_id)
-
-        if ptype is not None:
-            conditions.append("type = ?")
+        if ptype:
+            sql += " AND type = ?"
             params.append(ptype)
-
         if start_ts is not None:
-            # 直接比較 punished_at（假設為 INTEGER UNIX 時間戳）
-            conditions.append("punished_at >= ?")
+            sql += " AND punished_at >= ?"
             params.append(start_ts)
-
-        # 2. 合併 SQL
-        where_clause = " AND ".join(conditions)
-        sql = f"""
-            SELECT *
-            FROM punishments
-            WHERE {where_clause}
-            ORDER BY punished_at DESC
-            LIMIT ?
-        """
-        params.append(limit)
-
-        # 3. 執行並回傳
+        sql += " ORDER BY punished_at DESC"
+        # 只有 limit 不為 None 時才加 LIMIT
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
         cursor = await self.conn.execute(sql, params)
         rows = await cursor.fetchall()
         return rows
