@@ -16,7 +16,6 @@ with open("config.json", "r", encoding="utf-8") as fp:
 
 log = logging.getLogger(__name__)
 
-
 class WarnsPaginator(View):
     def __init__(self, embeds: List[discord.Embed]):
         super().__init__(timeout=120)
@@ -65,7 +64,7 @@ class Warn(commands.Cog):
         self.timezone = cfg["timezone"]
 
     @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
-    @app_commands.checks.has_permissions(administrator=True, manage_messages=True)
+    @app_commands.checks.has_permissions(manage_messages=True)
     @app_commands.command(name="warn", description="發送並記錄警告")
     @app_commands.describe(
         user="要警告的用戶",
