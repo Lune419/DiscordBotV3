@@ -38,6 +38,8 @@ class Ban(commands.Cog):
         delete_message_days: int = 0,
         send_message: bool = True
     ):
+        
+        now, ts = now_with_unix(self.timezone)
         # 檢查非法輸入
         if user.id == interaction.user.id:
             return await interaction.response.send_message("你不能封禁自己。", ephemeral=True)
@@ -63,45 +65,6 @@ class Ban(commands.Cog):
         except Exception as e:
             log.exception("檢查封禁列表時發生錯誤")
             return await interaction.followup.send(f"檢查封禁列表失敗: {e}", ephemeral=True)
-        
-        # 嘗試封禁使用者
-        try:
-            await interaction.guild.ban(user, reason=reason, delete_message_days=delete_message_days)
-        except discord.NotFound:
-            return await interaction.followup.send("無法封禁該使用者，可能已經不存在或不在此伺服器中。", ephemeral=True)
-        except discord.Forbidden:
-            return await interaction.followup.send("無法封禁該使用者，請確認機器人有足夠的權限。", ephemeral=True)
-        except discord.HTTPException:
-            log.exception("封禁使用者時發生 HTTP 錯誤")
-            return await interaction.followup.send("封禁失敗，請稍後再試。", ephemeral=True)
-        except Exception as e:
-            log.exception("封禁失敗")
-            await interaction.followup.send(f"封禁失敗: {e}")
-        
-        # 嘗試加入資料庫
-        now, ts = now_with_unix(self.timezone)
-        try:
-            await self.db_manager.add_punishment(
-                guild_id=interaction.guild.id,
-                user_id=user.id,
-                punished_at=ts,
-                ptype="ban",
-                admin_id=interaction.user.id,
-                reason=reason
-            )
-        except Exception as e:
-            log.exception("加入封禁紀錄到資料庫失敗")
-            return await interaction.followup.send(f"封禁成功，但無法記錄到資料庫: {e}", ephemeral=True)
-        
-        # 嘗試發送訊息到頻道
-        desc = f"{interaction.user.mention} 已封禁 {user.mention} \n> 原因：{utils.escape_markdown(reason or '無原因')}"
-        embed = discord.Embed(
-            title="封禁通知",
-            description=desc,
-            colour=discord.Colour.red(),
-            timestamp=now,
-        )
-        await interaction.followup.send(embed=embed, ephemeral=False)
         
         # 嘗試發送私訊給被封禁者
         if send_message:
@@ -133,7 +96,45 @@ class Ban(commands.Cog):
             except Exception:
                 log.exception("發送私訊時發生錯誤")
                 await interaction.followup.send("發送私訊時發生錯誤，請回報作者。", ephemeral=True)
-
+        
+        # 嘗試封禁使用者
+        try:
+            await interaction.guild.ban(user, reason=reason, delete_message_days=delete_message_days)
+        except discord.NotFound:
+            return await interaction.followup.send("無法封禁該使用者，可能已經不存在或不在此伺服器中。", ephemeral=True)
+        except discord.Forbidden:
+            return await interaction.followup.send("無法封禁該使用者，請確認機器人有足夠的權限。", ephemeral=True)
+        except discord.HTTPException:
+            log.exception("封禁使用者時發生 HTTP 錯誤")
+            return await interaction.followup.send("封禁失敗，請稍後再試。", ephemeral=True)
+        except Exception as e:
+            log.exception("封禁失敗")
+            await interaction.followup.send(f"封禁失敗: {e}")
+        
+        # 嘗試加入資料庫
+        try:
+            await self.db_manager.add_punishment(
+                guild_id=interaction.guild.id,
+                user_id=user.id,
+                punished_at=ts,
+                ptype="ban",
+                admin_id=interaction.user.id,
+                reason=reason
+            )
+        except Exception as e:
+            log.exception("加入封禁紀錄到資料庫失敗")
+            return await interaction.followup.send(f"封禁成功，但無法記錄到資料庫: {e}", ephemeral=True)
+        
+        # 嘗試發送訊息到頻道
+        desc = f"{interaction.user.mention} 已封禁 {user.mention} \n> 原因：{utils.escape_markdown(reason or '無原因')}"
+        embed = discord.Embed(
+            title="封禁通知",
+            description=desc,
+            colour=discord.Colour.red(),
+            timestamp=now,
+        )
+        await interaction.followup.send(embed=embed, ephemeral=False)
+        
 
 async def setup(bot):
     try:
