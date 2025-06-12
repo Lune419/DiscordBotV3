@@ -132,6 +132,7 @@ class DBManager:
         limit: Optional[int] = 100,
     ) -> List[aiosqlite.Row]:
         """查詢懲罰紀錄
+    
 
         Args:
             guild_id (int): 伺服器 ID.
