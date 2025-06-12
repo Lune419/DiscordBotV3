@@ -1,10 +1,11 @@
 import json
 import logging
-from typing import Optional
+from typing import Optional, Any, List
 
 import discord
 from discord import app_commands, utils
 from discord.ext import commands
+from discord.ui import View, button
 
 from utils.time_utils import now_with_unix
 from zoneinfo import ZoneInfo
@@ -15,6 +16,46 @@ with open("config.json", "r", encoding="utf-8") as fp:
 
 log = logging.getLogger(__name__)
 
+
+class WarnsPaginator(View):
+    def __init__(self, embeds: List[discord.Embed]):
+        super().__init__(timeout=120)
+        self.embeds = embeds
+        self.current = 0
+        # 頁面資訊（例如：1/3）
+        total = len(embeds)
+        self.page_indicator = discord.ui.Button(
+            label=f"{self.current+1}/{total}", style=discord.ButtonStyle.secondary, disabled=True
+        )
+        self.add_item(self.page_indicator)
+
+    @button(label="◀️", style=discord.ButtonStyle.primary, disabled=True)
+    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current -= 1
+        await self._update(interaction)
+
+    @button(label="▶️", style=discord.ButtonStyle.primary)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current += 1
+        await self._update(interaction)
+
+    async def _update(self, interaction: discord.Interaction):
+        total = len(self.embeds)
+        # 更新按鈕狀態
+        self.previous.disabled = (self.current == 0)
+        self.next.disabled = (self.current == total - 1)
+        # 更新頁面指示
+        self.page_indicator.label = f"{self.current+1}/{total}"
+        await interaction.response.edit_message(embed=self.embeds[self.current], view=self)
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+        # 編輯訊息，將所有按鈕停用
+        try:
+            await self.message.edit(view=self)
+        except:
+            pass
 
 class Warn(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -122,34 +163,45 @@ class Warn(commands.Cog):
 
         # 擷取資料
         since = ts - 30 * 24 * 3600 if recently else None
-        try:
-            records = await self.db.list_punishments(
-                guild_id=interaction.guild_id,
-                user_id=user.id,
-                ptype="warn",
-                start_ts=since,
-                limit=None if recently else 100,
-            )
-        except Exception:
-            log.exception("查詢警告紀錄時發生錯誤")
-            return await interaction.followup.send("查詢警告紀錄時發生錯誤。", ephemeral=True)
+        records = await self.db.list_punishments(
+            guild_id=interaction.guild_id,
+            user_id=user.id,
+            ptype="warn",
+            start_ts=since,
+            limit=None if recently else 100,
+        )
 
-        # 建立 Embed
-        if records:
+        if not records:
+            embed = discord.Embed(
+                description="沒有警告紀錄",
+                colour=discord.Colour.green(),
+                timestamp=now,
+            )
+            return await interaction.followup.send(embed=embed, ephemeral=True)
+
+        # 建立多個分頁 embed（每頁最多 5 項）
+        embeds: List[discord.Embed] = []
+        page_size = 5
+        for i in range(0, len(records), page_size):
+            chunk = records[i : i + page_size]
             title = (
                 f"{user.display_name}({user.id}) "
                 + ("最近30天的警告紀錄" if recently else "的全部警告紀錄")
             )
-            embed = discord.Embed(title=title, colour=discord.Colour.orange(), timestamp=now)
-            for r in records:
+            emb = discord.Embed(title=title, colour=discord.Colour.orange(), timestamp=now)
+            for r in chunk:
                 dt = datetime.fromtimestamp(r["punished_at"], ZoneInfo(self.timezone))
                 time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
                 reason = utils.escape_markdown(r["reason"] or "(無原因)")
-                embed.add_field(name=time_str, value=reason, inline=False)
-        else:
-            embed = discord.Embed(description="沒有警告紀錄", colour=discord.Colour.green())
+                emb.add_field(name=time_str, value=reason, inline=False)
+            embeds.append(emb)
 
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        # 啟動分頁 View
+        paginator = WarnsPaginator(embeds)
+        # 存下 message 以供 on_timeout 編輯
+        msg = await interaction.followup.send(embed=embeds[0], view=paginator, ephemeral=True)
+        paginator.message = msg  # type: ignore
+
 
 async def setup(bot: commands.Bot):
     try:
