@@ -13,7 +13,7 @@ with open("config.json", "r", encoding="utf-8") as fp:
     cfg = json.load(fp)
 
 intents = discord.Intents.all()
-log = logging.getLogger(__name__)
+log = logging.getLogger("main_bot")
 
 
 class Bot(commands.Bot):
@@ -32,9 +32,8 @@ class Bot(commands.Bot):
                 continue
             try:
                 await self.load_extension(f"cogs.{p.stem}")
-                log.info(f"已載入擴充: {p.stem}")
             except Exception:
-                logging.exception(f"載入擴充 {p.stem} 時發生錯誤")
+                log.exception(f"載入擴充 {p.stem} 時發生錯誤")
         log.info("載入擴充完畢")
 
         # 初始化資料庫
@@ -61,5 +60,6 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         log.info("Bot 已被手動停止")
+        os.system("pause")
     except Exception as e:
         log.exception(f"Bot 啟動時發生錯誤: {e}")
