@@ -159,14 +159,7 @@ class Mute(commands.Cog):
         n: int = 1,
         include_unmute: bool = False
     ):
-        """ 
-            查詢 正處於禁言狀態 的用戶 
-
-            參數:
-            user: 要查詢的用戶 (沒填 -> 所有處於禁言狀態的用戶)
-            n:    要查詢的筆數 (沒填 -> 最近的 1 筆; 最多100)
-            include_unmute: 查詢的資料是否包含解除禁言的紀錄 (預設: False)
-        """
+        """ 查詢 正處於禁言狀態 的用戶  """
         try:
             guild = interaction.guild
 
@@ -306,15 +299,16 @@ class Mute(commands.Cog):
     ) -> list:
         """ 
         從資料庫查詢禁言紀錄
-           
-        回傳:  f"{何時}: 因 {甚麼原因}  被  {哪個管理員}  禁言  {多久}" 
+
+        回傳:   
+            f"{何時}: {誰}  因  {甚麼原因}  被  {哪個管理員}  禁言  {多久}"
         """
         results = []
         try:
             now = datetime.now(ZoneInfo(cfg["timezone"]))
             UNIXNOW = int(now.timestamp())
 
-            if mode == "user":  # 會根據指定用戶查詢
+            if mode == "user":  # 根據指定用戶查詢
                 if recently:
                     punishments = await self.bot.db_manager.list_punishments(
                         guild_id=guild_id,
@@ -329,7 +323,7 @@ class Mute(commands.Cog):
                         ptype="mute",
                         limit=limit
                     )
-            else: # 查詢所有用戶紀錄
+            else:  # 查詢所有用戶紀錄
                 if recently:
                     punishments = await self.bot.db_manager.list_punishments(
                         guild_id=guild_id,
@@ -343,7 +337,7 @@ class Mute(commands.Cog):
                         limit=limit
                     )
 
-
+            # 取出每筆資料的資訊
             for p in punishments:
                 punished_at = p["punished_at"]
                 dt = datetime.fromtimestamp(punished_at, ZoneInfo(cfg["timezone"])).strftime("%Y-%m-%d %H:%M:%S")
@@ -355,11 +349,13 @@ class Mute(commands.Cog):
                 user = interaction.guild.get_member(user_id)
                 user_str = f"\n⮑{user.display_name}" if mode == "all" else ""
                 
+                # 判斷管理員是否還是伺服器成員
                 if admin_member:
                     admin = admin_member.display_name
                 else:
                     admin = f"ID: {admin_id}"
 
+                # 整合資訊
                 if duration > 0:
                     duration_str = self.get_durations_str(second=duration)
                     results.append(f"{dt}: {user_str} 因  {reason}  被  {admin}  禁言了  {duration_str}")
@@ -377,7 +373,7 @@ class Mute(commands.Cog):
    
     def get_durations_str(self, second: int) -> str:
         try:
-            # 將 int 秒數轉換為天、時、分
+            """ 將 秒 轉換為日、時、分 """
             days = second // 86400
             hours = (second % 86400) // 3600
             minutes = (second % 3600) // 60
