@@ -32,17 +32,18 @@ class Mute(commands.Cog):
     async def mute(
         self,
         interaction: discord.Interaction,
-        user: discord.User,
+        user: discord.Member,
         days: int = 0,
         hours: int = 0,
         minutes: int = 0,
-        reason: str = None
+        reason: str = "沒有原因"
     ):
         """ 禁言 """
         try:
             now = datetime.now(ZoneInfo(cfg["timezone"]))
             UNIXNOW = int(now.timestamp())
             durations = timedelta(days=days, hours=hours, minutes=minutes)
+            durations_seconds = durations.total_seconds()
 
             if user.id == interaction.user.id:
                 await interaction.response.send_message(
@@ -56,13 +57,12 @@ class Mute(commands.Cog):
                 )
                 return
 
-            if durations.total_seconds() <= 0:
+            if durations_seconds <= 0:
                 embed = discord.Embed(
                     title       = f"禁言{user.display_name}失敗!!",
-                    description = "禁言時間必須大於0 -_-", 
+                    description = "禁言時間必須為正數!", 
                     color       = discord.Color.orange()
                 )
-                await interaction.response.send_message(embed=embed, ephemeral=True)
 
             else:
                 await user.timeout(durations, reason=reason)
@@ -72,17 +72,18 @@ class Mute(commands.Cog):
                     user_id=user.id,
                     punished_at=UNIXNOW,
                     ptype="mute",
-                    pcontent=f"{days}日 {hours}時{minutes}分",
+                    duration=durations_seconds,
                     reason=reason,
                     admin_id=interaction.user.id,
                 )
 
+                durations_str = self.get_durations_str(durations_seconds)
                 embed = discord.Embed(
                     title       = f"禁言成功!!", 
-                    description = f"{interaction.user.mention} 將 {user.mention} 禁言: {days}日 {hours}時{minutes}分\n原因: {reason}",
+                    description = f"{interaction.user.mention} 將 {user.mention} 禁言 {durations_str}\n原因: {reason}",
                     color       = discord.Color.green()
                 )                
-                await interaction.response.send_message(embed=embed, ephemeral=False) 
+            await interaction.response.send_message(embed=embed, ephemeral=False) 
 
         except Exception as e:
             log.exception("指令執行時發生錯誤:")
@@ -124,7 +125,7 @@ class Mute(commands.Cog):
                     user_id=user.id,
                     punished_at=UNIXNOW,
                     ptype="mute",
-                    pcontent="unmute",
+                    duration=0,
                     reason=reason,
                     admin_id=interaction.user.id,
                 )
@@ -158,7 +159,14 @@ class Mute(commands.Cog):
         n: int = 1,
         include_unmute: bool = False
     ):
-        """ 查詢 正在禁言狀態 的用戶 """
+        """ 
+            查詢 正處於禁言狀態 的用戶 
+
+            參數:
+            user: 要查詢的用戶 (沒填 -> 所有處於禁言狀態的用戶)
+            n:    要查詢的筆數 (沒填 -> 最近的 1 筆; 最多100)
+            include_unmute: 查詢的資料是否包含解除禁言的紀錄 (預設: False)
+        """
         try:
             guild = interaction.guild
 
@@ -168,7 +176,7 @@ class Mute(commands.Cog):
                 if m.timed_out_until and m.timed_out_until > discord.utils.utcnow()
             ]
             if not muted_member:
-                embed = discord.Embed(title="目前沒有正在被禁言的成員!!")
+                embed = discord.Embed(title="沒有正在被禁言的成員!!")
             else:   
                 # 若user未輸入 -> 輸出所有被禁成員
                 if user is None:
@@ -202,7 +210,7 @@ class Mute(commands.Cog):
                             mode= "user",
                             recently= False
                         )
-                    embed = discord.Embed(title="查詢成功!!", color=discord.Color.green())
+                    embed = discord.Embed(title="查詢正在被禁言的用戶成功!!")
                     embed.add_field(
                             name= user.display_name,
                             value= f"禁言到 {until}\n最近的禁言處分:\n" + "\n".join(results),
@@ -244,7 +252,7 @@ class Mute(commands.Cog):
                 results = await self.find_punishments_from_db(
                     interaction= interaction, 
                     guild_id= guild.id, 
-                    user_id= 0, 
+                    user_id= None, 
                     include_unmute= include_unmute,
                     mode= "all",
                     limit=100,
@@ -268,13 +276,14 @@ class Mute(commands.Cog):
                         user_id= user.id, 
                         include_unmute= include_unmute,
                         mode= "user",
+                        limit=100,
                         recently=recently,
                     )
-                embed = discord.Embed(title="查詢成功!!", color=discord.Color.green())
+                
                 embed.add_field(
                         name= user.display_name,
                         value= "\n".join(results),
-                        inline=recently
+                        inline=False
                     )
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -284,9 +293,7 @@ class Mute(commands.Cog):
 
 
 
-
-    # 查詢禁言紀錄
-    """ 回傳 f"{何時}: {甚麼原因}  被  {哪個管理員}  禁言  {多久}" """
+    
     async def find_punishments_from_db(
         self,
         interaction: discord.Interaction,
@@ -297,6 +304,11 @@ class Mute(commands.Cog):
         mode: str,
         recently: bool
     ) -> list:
+        """ 
+        從資料庫查詢禁言紀錄
+           
+        回傳:  f"{何時}: 因 {甚麼原因}  被  {哪個管理員}  禁言  {多久}" 
+        """
         results = []
         try:
             now = datetime.now(ZoneInfo(cfg["timezone"]))
@@ -328,7 +340,7 @@ class Mute(commands.Cog):
                     punishments = await self.bot.db_manager.list_punishments(
                         guild_id=guild_id,
                         ptype="mute",
-                        limit=100
+                        limit=limit
                     )
 
 
@@ -336,25 +348,48 @@ class Mute(commands.Cog):
                 punished_at = p["punished_at"]
                 dt = datetime.fromtimestamp(punished_at, ZoneInfo(cfg["timezone"])).strftime("%Y-%m-%d %H:%M:%S")
                 reason = p["reason"]
-                pcontent = p["pcontent"]
+                duration = p["duration"]
                 admin_id = p["admin_id"]
                 admin_member = interaction.guild.get_member(admin_id)
+                user_id = p["user_id"]
+                user = interaction.guild.get_member(user_id)
+                user_str = f"\n⮑{user.display_name}" if mode == "all" else ""
+                
                 if admin_member:
                     admin = admin_member.display_name
                 else:
                     admin = f"ID: {admin_id}"
 
-                if include_unmute and pcontent == "unmute":
-                    results.append(f"{dt}: {reason}  被  {admin}  解除禁言")
+                if duration > 0:
+                    duration_str = self.get_durations_str(second=duration)
+                    results.append(f"{dt}: {user_str} 因  {reason}  被  {admin}  禁言了  {duration_str}")
+                elif include_unmute and duration == 0:
+                    results.append(f"{dt}: {user_str} 因  {reason}  被  {admin}  解除禁言")                
                 else:
-                    results.append(f"{dt}: {reason}  被  {admin}  禁言了  {pcontent}")
+                    continue
 
             return results
 
         except Exception:
             log.exception("查詢禁言紀錄失敗!!")
             return []
+
+   
+    def get_durations_str(self, second: int) -> str:
+        try:
+            # 將 int 秒數轉換為天、時、分
+            days = second // 86400
+            hours = (second % 86400) // 3600
+            minutes = (second % 3600) // 60
+            days_str = f"{int(days)}日" if days > 0 else ""
+            hours_str = f"{int(hours)}小時" if hours > 0 else ""
+            minutes_str = f"{int(minutes)}分鐘" if minutes > 0 else ""
+            duration_str = days_str + hours_str + minutes_str
+            return duration_str
         
+        except Exception:
+            log.exception("時間轉字串失敗!!")
+            return ""
 
 async def setup(bot):
     try:
