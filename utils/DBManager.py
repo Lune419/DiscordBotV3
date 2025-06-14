@@ -46,6 +46,7 @@ class DBManager:
                     user_id      INTEGER NOT NULL,
                     punished_at  INTEGER NOT NULL,
                     type         TEXT    NOT NULL,
+                    pcontent     TEXT,
                     admin_id     INTEGER NOT NULL,
                     reason       TEXT
                 )
@@ -99,6 +100,7 @@ class DBManager:
         user_id: int,
         punished_at: int,
         ptype: str,
+        pcontent: str,
         reason: Optional[str],
         admin_id: int,
     ) -> None:
@@ -109,13 +111,14 @@ class DBManager:
             user_id: 被處分用戶 ID
             punished_at: 處分時間 (UNIX timestamp)
             ptype: 處分類型
+            pcontent: 處分內容
             reason: 處分原因 (可為 None)
             admin_id: 處分管理員 ID
         """
         await self.connect()
         await self.conn.execute(
-            "INSERT INTO punishments (guild_id, user_id, punished_at, type, reason, admin_id) VALUES (?, ?, ?, ?, ?, ?)",
-            (guild_id, user_id, punished_at, ptype, reason, admin_id),
+            "INSERT INTO punishments (guild_id, user_id, punished_at, type, pcontent, reason, admin_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (guild_id, user_id, punished_at, ptype, pcontent, reason, admin_id),
         )
         await self.conn.commit()
 
@@ -125,6 +128,7 @@ class DBManager:
         guild_id: int,
         user_id: Optional[int] = None,
         ptype: Optional[str] = None,
+        pcontent: Optional[str] = None,
         start_ts: Optional[int] = None,  # UNIX 時間戳，單位秒
         limit: int = 100,
     ) -> List[aiosqlite.Row]:
@@ -153,6 +157,10 @@ class DBManager:
         if ptype is not None:
             conditions.append("type = ?")
             params.append(ptype)
+
+        if pcontent is not None:
+            conditions.append("pcontent = ?")
+            params.append(pcontent)
 
         if start_ts is not None:
             # 直接比較 punished_at（假設為 INTEGER UNIX 時間戳）
