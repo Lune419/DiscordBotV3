@@ -188,10 +188,10 @@ class Mute(commands.Cog):
 
 
     @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
-    @app_commands.command(name="muting", description="查詢正在被禁言的用戶")
+    @app_commands.command(name="muting", description="查詢正處於禁言狀態的用戶")
     @app_commands.describe(
-        user="要查詢的用戶(預設全部被禁言的用戶)",
-        n="指定回傳最近的 n 筆禁言紀錄(預設1, 最多100)",
+        user="要查詢的用戶(預設全部處於禁言狀態的用戶)",
+        n="禁言紀錄筆數(預設1, 最多100; 全部用戶鎖定為1)",
         include_unmute="是否包含解除禁言的紀錄(預設否)"
     )
     @app_commands.checks.has_permissions(administrator=True, manage_messages=True)
@@ -206,7 +206,7 @@ class Mute(commands.Cog):
         try:
             guild = interaction.guild
 
-            # 檢查有沒有被禁成員
+            # 檢查有無被禁言的成員
             muted_members = [
                 m for m in guild.members
                 if m.timed_out_until and m.timed_out_until > discord.utils.utcnow()
@@ -215,8 +215,18 @@ class Mute(commands.Cog):
                 embed = discord.Embed(title="沒有正在被禁言的成員!!")
                 await interaction.response.send_message(embed=embed, ephemeral=True)
                 return
+            
+            # 檢查n值
+            if n < 1:
+                embed = discord.Embed(title="n 必須為正整數!!", color= discord.Color.orange())
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            elif n > 100:
+                embed = discord.Embed(title="n 必須小於或等於 100!!", color= discord.Color.orange())
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
                
-            # 若user未輸入 -> 輸出所有被禁成員
+            # 若user輸入 -> 輸出該成員資訊
             if user:
                 if not user.timed_out_until or user.timed_out_until <= discord.utils.utcnow():
                     embed = discord.Embed(
@@ -227,7 +237,7 @@ class Mute(commands.Cog):
                     return
 
                 until = user.timed_out_until.strftime("%Y-%m-%d %H:%M:%S")
-                embeds = await self.find_punishments_from_db(
+                embeds = await self.search_mute_from_db(
                     interaction=interaction,
                     guild_id=guild.id,
                     user_id=user.id,
@@ -235,35 +245,31 @@ class Mute(commands.Cog):
                     include_unmute=include_unmute,
                     mode="user",
                     recently=False,
-                    mute_until=until  # 新增參數
+                    mute_until=until
                 )
-                await interaction.response.send_message(embed=embeds[0], ephemeral=True)
+
+                paginator = MutesPaginator(embeds)
+                await interaction.response.send_message(embed=embeds[0], view=paginator, ephemeral=True)
+                paginator.message = await interaction.original_response()
                 return
             
-            # 查詢所有被禁言成員
-            embeds = []
-            for member in muted_members:
-                until = member.timed_out_until.strftime("%Y-%m-%d %H:%M:%S")
-                member_embeds = await self.find_punishments_from_db(
-                    interaction=interaction,
-                    guild_id=guild.id,
-                    user_id=member.id,
-                    limit=n,
-                    include_unmute=include_unmute,
-                    mode="user",
-                    recently=False,
-                    mute_until=until  # 新增參數
-                )
-                if member_embeds:
-                    embeds.append(member_embeds[0])
+            # 若user未輸入 -> 查詢所有被禁言成員
+            # 1. 收集所有被禁言成員的 user_id 及禁言到時間
+            mute_until_dict = {m.id: m.timed_out_until.strftime("%Y-%m-%d %H:%M:%S") for m in muted_members}
+            # 2. 查詢所有這些成員的禁言紀錄
+            embeds = await self.search_mute_from_db(
+                interaction=interaction,
+                guild_id=guild.id,
+                limit= 1,
+                include_unmute=include_unmute,
+                mode="all",
+                recently=False,
+                mute_until=mute_until_dict  # 傳 dict
+            )
 
-            if not embeds:
-                embed = discord.Embed(title="查無禁言紀錄", color=discord.Color.orange())
-                await interaction.response.send_message(embed=embed, ephemeral=True)
-            else:
-                paginator = MutesPaginator(embeds)
-                msg = await interaction.response.send_message(embed=embeds[0], view=paginator, ephemeral=True)
-                paginator.message = await msg.original_response()
+            paginator = MutesPaginator(embeds)
+            await interaction.response.send_message(embed=embeds[0], view=paginator, ephemeral=True)
+            paginator.message = await interaction.original_response()
 
         except Exception as e:
             embed = discord.Embed(title=f"查詢禁言失敗!!", description=f"執行時失敗:{e}", color=discord.Color.red())
@@ -288,7 +294,7 @@ class Mute(commands.Cog):
         """ 查詢禁言紀錄 """
         try:
             await interaction.response.defer(ephemeral=True)
-            embeds = await self.find_punishments_from_db(
+            embeds = await self.search_mute_from_db(
                 interaction=interaction,
                 guild_id=interaction.guild.id,
                 user_id=user.id if user else None,  # 若user未輸入 -> 輸出所有禁言紀錄
@@ -314,106 +320,91 @@ class Mute(commands.Cog):
 
 
     
-    async def find_punishments_from_db(
+    async def search_mute_from_db(
         self,
         interaction: discord.Interaction,
         guild_id: int,
-        user_id: int,
         limit: int,
         include_unmute: bool,
         mode: str,
         recently: bool,
-        mute_until: str = None
+        user_id: int = None,
+        mute_until = None
     ) -> list:
         """ 
         從資料庫查詢禁言紀錄
 
         回傳:   
-            f"{何時}: {誰}  因  {甚麼原因}  被  {哪個管理員}  禁言  {多久}"
+            {何時}: 
+            {誰}  因  {甚麼原因}  被  {哪個管理員}  禁言  {多久}
         """
         try:
             now = datetime.now(ZoneInfo(cfg["timezone"]))
             UNIXNOW = int(now.timestamp())
 
-            if mode == "user":  # 根據指定用戶查詢
-                if recently:
-                    punishments = await self.bot.db_manager.list_punishments(
-                        guild_id=guild_id,
-                        user_id=user_id,
-                        ptype="mute",
-                        start_ts=UNIXNOW - 2592000
-                    )
-                else:
-                    punishments = await self.bot.db_manager.list_punishments(
-                        guild_id=guild_id,
-                        user_id=user_id,
-                        ptype="mute",
-                        limit=limit
-                    )
-            else:  # 查詢所有用戶紀錄
-                if recently:
-                    punishments = await self.bot.db_manager.list_punishments(
-                        guild_id=guild_id,
-                        ptype="mute",
-                        start_ts=UNIXNOW - 2592000
-                    )
-                else:
-                    punishments = await self.bot.db_manager.list_punishments(
-                        guild_id=guild_id,
-                        ptype="mute",
-                        limit=limit
-                    )
+            # 組裝查詢參數
+            query = {
+                "guild_id": guild_id,
+                "ptype": "mute"
+            }
+            if mode == "user" and user_id:
+                query["user_id"] = user_id
+            if recently:
+                query["start_ts"] = UNIXNOW - 2592000
+            else:
+                query["limit"] = limit
 
-            # 取出每筆資料的資訊
-            page_size = 5
-            embeds = []
-            for i in range(0, len(punishments), page_size):
-                chunk = punishments[i:i+page_size]
+            punishments = await self.bot.db_manager.list_punishments(**query)  # 把 query 這個字典裡的所有鍵值對，當作參數傳給 list_punishments
+
+            # embed 組裝
+            def make_embed(chunk):
                 if mode == "user":
-                    user = interaction.guild.get_member(user_id)
-                    title = f"{user.display_name}({user.id}) " + ("最近30天的禁言紀錄" if recently else "的全部禁言紀錄")
-                    embed = discord.Embed(
-                        title=title,
-                        colour=discord.Colour.orange(),
-                        timestamp=now,
-                        description=f"🚫 禁言到：{mute_until}" if mute_until else None  # 顯示禁言到
-                    )
+                    member = interaction.guild.get_member(user_id)
+                    title = f"{member.display_name}({member.id}) " + ("最近30天的禁言紀錄" if recently else "的全部禁言紀錄")
                 else:
-                    embed = discord.Embed(
-                        title="所有用戶的禁言紀錄",
-                        colour=discord.Colour.orange(),
-                        timestamp=now,
-                        description=f"🚫 禁言到：{mute_until}" if mute_until else None  # 顯示禁言到
-                    )
+                    title = "所有用戶的禁言紀錄"
+                embed = discord.Embed(
+                    title=title,
+                    colour=discord.Colour.orange(),
+                    timestamp=now,
+                    description=f"🚫 禁言到：{mute_until}" if mute_until and mode == "user" else None
+                )
                 for p in chunk:
                     dt = datetime.fromtimestamp(p["punished_at"], ZoneInfo(cfg["timezone"])).strftime("%Y-%m-%d %H:%M:%S")
                     reason = p["reason"] or "(無原因)"
                     duration = p["duration"]
                     admin_id = p["admin_id"]
                     admin_member = interaction.guild.get_member(admin_id)
-                    user_id = p["user_id"]
-                    user = interaction.guild.get_member(user_id)
-                    user_str = f"\n{user.display_name}  " if mode == "all" else ""
-                    
-                    # 判斷管理員是否還是伺服器成員
-                    if admin_member:
-                        admin = admin_member.display_name
-                    else:
-                        admin = f"ID: {admin_id}"
+                    admin = admin_member.display_name if admin_member else f"ID: {admin_id}"
+                    u_id = p["user_id"]
+                    u_member = interaction.guild.get_member(u_id)
+                    user_str = f"\n{u_member.display_name}  " if mode == "all" and u_member else ""
 
-                    # 整合資訊
+                    until_str = ""
+                    if mode == "all" and isinstance(mute_until, dict):
+                        until_str = f"🚫 禁言到：{mute_until.get(u_id, '未知')}"
+                        user_str = ""
+                    
                     if duration > 0:
                         duration_str = self.get_durations_str(second=duration)
-                        value = f"{user_str}被  {admin}  禁言了  {duration_str}\n原因: {reason}"
+                        value = f"{user_str}  被  {admin}  禁言了  {duration_str}\n原因: {reason}"
                     elif include_unmute and duration == 0:
-                        value = f"{user_str}被  {admin}  解除禁言\n原因: {reason}"              
+                        value = f"{user_str}  被  {admin}  解除禁言\n原因: {reason}"
                     else:
                         continue
-                    embed.add_field(name=f"{dt}", value=value, inline=False)
+
+                    if mute_until and mode == "all":
+                        embed.add_field(name=f"{u_member.display_name}   {until_str}", value=f"{dt}\n"+value, inline=False)
+                    else:
+                        embed.add_field(name=f"{dt}", value=value, inline=False)
 
                 if not chunk:
                     embed.add_field(name="查無紀錄", value=" ", inline=False)
-                embeds.append(embed)
+                return embed
+            
+            # 分頁
+            page_size = 5
+            embeds = [make_embed(punishments[i:i+page_size]) for i in range(0, len(punishments), page_size)]
 
             if not embeds:
                 embed = discord.Embed(title="查無紀錄", color=discord.Color.orange())
