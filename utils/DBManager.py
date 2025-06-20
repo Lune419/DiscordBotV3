@@ -91,6 +91,48 @@ class DBManager:
                 """
             )
         await self.conn.commit()
+        
+    async def init_voice_db(self) -> None:
+        """
+        初始化語音房紀錄的所有資料表與索引。
+        若資料表不存在則建立。
+        僅需於資料庫首次建立時呼叫。
+        """
+        await self.connect()
+        async with self.conn.cursor() as cur:
+            # 建立語音事件記錄表
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS voice_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    channel_id INTEGER NOT NULL,
+                    channel_name TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    event_type TEXT NOT NULL
+                )
+            """)
+            
+            # 建立索引以支援各種查詢需求
+            # 索引1: 用於查詢特定伺服器中的用戶在特定時間範圍的活動
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_voice_user_time 
+                ON voice_logs (guild_id, user_id, timestamp)
+            """)
+            
+            # 索引2: 用於查詢特定伺服器中的頻道在特定時間範圍的活動
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_voice_channel_time 
+                ON voice_logs (guild_id, channel_id, timestamp)
+            """)
+            
+            # 索引3: 用於查詢多人聚集情況（支持多人在同一頻道的查詢）
+            await cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_voice_channel_user_time 
+                ON voice_logs (guild_id, channel_id, user_id, timestamp)
+            """)
+            
+        await self.conn.commit()
 
     # --------- punishments CRUD ---------
     async def add_punishment(
@@ -212,6 +254,32 @@ class DBManager:
                 (guild_id, limit),
             )
         return await cursor.fetchall()
+    
+    async def add_voice_event(
+        self,
+        *,
+        guild_id: int,
+        user_id: int,
+        channel_id: int,
+        channel_name: str,
+        timestamp: int,
+        event_type: str,
+    ) -> None:
+        await self.connect()
+        await self.conn.execute(
+            """
+            INSERT INTO voice_logs(
+            guild_id,
+            user_id,
+            channel_id,
+            channel_name,
+            timestamp,
+            event_type) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (guild_id, user_id, channel_id,channel_name, timestamp, event_type),
+        )
+        await self.conn.commit()
+        
 
     # --------- server_settings CRUD ---------
     async def set_settings(
