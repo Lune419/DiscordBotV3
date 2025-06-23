@@ -1,5 +1,12 @@
 import re
+import json
 from typing import Dict
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+with open("config.json", "r", encoding="utf-8") as fp:
+    cfg = json.load(fp)
+
 
 def parse_time_string(time_str: str) -> int:
     """
@@ -103,3 +110,9 @@ def format_seconds(seconds: int) -> str:
             result.append(f"{value}{unit}")
     
     return "".join(result)
+
+
+
+def date_format(unix_time):
+    """ 將unix時間轉為 Y-m-d H:M:S 的形式 """
+    return datetime.fromtimestamp(unix_time, ZoneInfo(cfg["timezone"])).strftime("%Y-%m-%d %H:%M:%S")
