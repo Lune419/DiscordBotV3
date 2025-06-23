@@ -151,8 +151,13 @@ class DBManager:
             sql += " AND user_id = ?"
             params.append(user_id)
         if ptype:
-            sql += " AND type = ?"
-            params.append(ptype)
+            if isinstance(ptype, (list, tuple)):
+                placeholders = ",".join("?" for _ in ptype)
+                sql += f" AND type IN ({placeholders})"
+                params.extend(ptype)
+            else:
+                sql += " AND type = ?"
+                params.append(ptype)
         if start_ts is not None:
             sql += " AND punished_at >= ?"
             params.append(start_ts)
