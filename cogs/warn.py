@@ -124,7 +124,8 @@ class Warn(commands.Cog):
                     timestamp=now,
                 )
                 dm.set_footer(text=interaction.guild.name)
-                dm.set_author(name=f'{interaction.guild.name}警告通知', icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+                dm.set_author(name=f'{interaction.guild.name}警告通知',
+                              icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
             except Exception:
                 log.exception("建立私訊 Embed 時發生錯誤")
                 return await interaction.followup.send(

@@ -37,7 +37,14 @@ class Bot(commands.Bot):
         log.info("載入擴充完畢")
 
         # 初始化資料庫
-        await self.db_manager.init_db()
+        try:
+            await self.db_manager.init_db()
+        except Exception as _:
+            log.exception("初始化一般資料庫時發生錯誤")
+        try:
+            await self.db_manager.init_voice_db()
+        except Exception as _:
+            log.exception("初始化語音資料庫時發生錯誤")
 
         # 同步指令
         guild = discord.Object(id=cfg["guild_id"])
