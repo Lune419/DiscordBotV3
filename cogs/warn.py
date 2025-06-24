@@ -1,12 +1,12 @@
 import json
 import logging
-from typing import Optional, Any, List
+from typing import Optional, List
 
 import discord
 from discord import app_commands, utils
 from discord.ext import commands
-from discord.ui import View, button
 
+from utils.Paginator import Paginator
 from utils.time_utils import now_with_unix
 from zoneinfo import ZoneInfo
 from datetime import datetime
@@ -15,46 +15,6 @@ with open("config.json", "r", encoding="utf-8") as fp:
     cfg = json.load(fp)
 
 log = logging.getLogger(__name__)
-
-class WarnsPaginator(View):
-    def __init__(self, embeds: List[discord.Embed]):
-        super().__init__(timeout=120)
-        self.embeds = embeds
-        self.current = 0
-        # 頁面資訊（例如：1/3）
-        total = len(embeds)
-        self.page_indicator = discord.ui.Button(
-            label=f"{self.current+1}/{total}", style=discord.ButtonStyle.secondary, disabled=True
-        )
-        self.add_item(self.page_indicator)
-
-    @button(label="◀️", style=discord.ButtonStyle.primary, disabled=True)
-    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.current -= 1
-        await self._update(interaction)
-
-    @button(label="▶️", style=discord.ButtonStyle.primary)
-    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.current += 1
-        await self._update(interaction)
-
-    async def _update(self, interaction: discord.Interaction):
-        total = len(self.embeds)
-        # 更新按鈕狀態
-        self.previous.disabled = (self.current == 0)
-        self.next.disabled = (self.current == total - 1)
-        # 更新頁面指示
-        self.page_indicator.label = f"{self.current+1}/{total}"
-        await interaction.response.edit_message(embed=self.embeds[self.current], view=self)
-
-    async def on_timeout(self):
-        for child in self.children:
-            child.disabled = True
-        # 編輯訊息，將所有按鈕停用
-        try:
-            await self.message.edit(view=self)
-        except:
-            pass
 
 class Warn(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -197,7 +157,7 @@ class Warn(commands.Cog):
             embeds.append(emb)
 
         # 啟動分頁 View
-        paginator = WarnsPaginator(embeds)
+        paginator = Paginator(embeds)
         # 存下 message 以供 on_timeout 編輯
         msg = await interaction.followup.send(embed=embeds[0], view=paginator, ephemeral=True)
         paginator.message = msg  # type: ignore
