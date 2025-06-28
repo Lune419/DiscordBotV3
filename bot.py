@@ -35,6 +35,7 @@ class Bot(commands.Bot):
             except Exception:
                 log.exception(f"載入擴充 {p.stem} 時發生錯誤")
         log.info("載入擴充完畢")
+        log.info(f"已載入 {len(self.cogs)} 個擴充")
 
         # 初始化資料庫
         try:
