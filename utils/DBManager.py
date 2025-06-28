@@ -284,6 +284,7 @@ class DBManager:
     # --------- server_settings CRUD ---------
     async def set_settings(
         self,
+        *,
         guild_id: int,
         notify_channel: Optional[int] = None,
         voice_log_channel: Optional[int] = None,
