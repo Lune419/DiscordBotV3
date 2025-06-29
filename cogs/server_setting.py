@@ -1,9 +1,9 @@
 import json
 import logging
-from typing import Optional, Any, List
+from typing import List
 
 import discord
-from discord import app_commands, utils
+from discord import app_commands
 from discord.ext import commands
 
 from utils.time_utils import now_with_unix
