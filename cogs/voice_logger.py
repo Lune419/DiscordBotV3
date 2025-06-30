@@ -306,3 +306,4 @@ class VoiceLogger(commands.Cog):
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(VoiceLogger(bot))
+    log.info("VoiceLogger 擴充已載入")

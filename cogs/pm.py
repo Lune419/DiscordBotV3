@@ -54,3 +54,4 @@ class PM(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(PM(bot))
+    log.info("PM cog 已載入")
