@@ -1,5 +1,6 @@
 import json
 import time
+import logging
 
 import discord
 from discord import app_commands
@@ -7,6 +8,8 @@ from discord.ext import commands
 
 with open("config.json", "r", encoding="utf-8") as fp:
     cfg = json.load(fp)
+    
+log = logging.getLogger(__name__)
 
 
 class Ping(commands.Cog):
@@ -40,3 +43,4 @@ class Ping(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Ping(bot))
+    log.info("Ping 擴充已載入")

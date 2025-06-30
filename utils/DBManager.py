@@ -90,6 +90,26 @@ class DBManager:
                 )
                 """
             )
+            
+            # 建立 anti_dive 資料表 - 用於追蹤用戶最後活動時間
+            await cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS anti_dive (
+                    guild_id             INTEGER NOT NULL,
+                    user_id              INTEGER NOT NULL,
+                    last_message_time    INTEGER,
+                    last_voice_time      INTEGER,
+                    PRIMARY KEY (guild_id, user_id)
+                )
+                """
+            )
+            await cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_anti_dive_message ON anti_dive(guild_id, last_message_time)"
+            )
+            await cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_anti_dive_voice ON anti_dive(guild_id, last_voice_time)"
+            )
+            
         await self.conn.commit()
         
     async def init_voice_db(self) -> None:
@@ -289,6 +309,7 @@ class DBManager:
     # --------- server_settings CRUD ---------
     async def set_settings(
         self,
+        *,
         guild_id: int,
         notify_channel: Optional[int] = None,
         voice_log_channel: Optional[int] = None,
@@ -366,3 +387,160 @@ class DBManager:
             "SELECT * FROM server_settings WHERE guild_id = ?", (guild_id,)
         )
         return await cursor.fetchone()
+        
+    # --------- anti_dive CRUD ---------
+    
+    async def update_user_activity(
+        self, 
+        *, 
+        guild_id: int, 
+        user_id: int, 
+        message_time: Optional[int] = None, 
+        voice_time: Optional[int] = None
+    ) -> None:
+        """
+        更新用戶的活動時間，用於追蹤潛水情況。
+        
+        參數:
+            guild_id: 伺服器 ID
+            user_id: 用戶 ID
+            message_time: 用戶最後發送訊息的時間戳 (可選)
+            voice_time: 用戶最後在語音頻道的時間戳 (可選)
+        
+        至少需要提供 message_time 或 voice_time 其中之一。
+        如果記錄不存在則創建，如果存在則更新。
+        """
+        await self.connect()
+        
+        # 檢查是否已有該用戶的記錄
+        cursor = await self.conn.execute(
+            "SELECT 1 FROM anti_dive WHERE guild_id = ? AND user_id = ?",
+            (guild_id, user_id)
+        )
+        exists = await cursor.fetchone()
+        
+        if exists:
+            # 更新現有記錄
+            fields = []
+            params = []
+            
+            if message_time is not None:
+                fields.append("last_message_time = ?")
+                params.append(message_time)
+                
+            if voice_time is not None:
+                fields.append("last_voice_time = ?")
+                params.append(voice_time)
+                
+            if fields:
+                params.extend([guild_id, user_id])
+                await self.conn.execute(
+                    f"UPDATE anti_dive SET {', '.join(fields)} WHERE guild_id = ? AND user_id = ?",
+                    tuple(params)
+                )
+        else:
+            # 創建新記錄
+            await self.conn.execute(
+                "INSERT INTO anti_dive (guild_id, user_id, last_message_time, last_voice_time) VALUES (?, ?, ?, ?)",
+                (guild_id, user_id, message_time, voice_time)
+            )
+            
+        await self.conn.commit()
+        
+    async def get_user_activity(
+        self, 
+        *, 
+        guild_id: int, 
+        user_id: Optional[int] = None
+    ) -> List[aiosqlite.Row]:
+        """
+        獲取指定伺服器中用戶的活動記錄。
+        
+        參數:
+            guild_id: 伺服器 ID
+            user_id: 用戶 ID (可選，若提供則只回傳該用戶的資料)
+            
+        回傳:
+            符合條件的活動記錄列表。
+        """
+        await self.connect()
+        
+        if user_id is not None:
+            cursor = await self.conn.execute(
+                "SELECT * FROM anti_dive WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id)
+            )
+            result = await cursor.fetchall()
+            return result
+        else:
+            cursor = await self.conn.execute(
+                "SELECT * FROM anti_dive WHERE guild_id = ?",
+                (guild_id,)
+            )
+            result = await cursor.fetchall()
+            return result
+            
+    async def get_inactive_users(
+        self, 
+        *, 
+        guild_id: int, 
+        message_threshold: Optional[int] = None, 
+        voice_threshold: Optional[int] = None,
+        require_both: bool = False
+    ) -> List[aiosqlite.Row]:
+        """
+        獲取指定伺服器中的非活躍用戶。
+        
+        參數:
+            guild_id: 伺服器 ID
+            message_threshold: 訊息活動閾值時間戳 (若用戶最後訊息時間早於此值則視為非活躍)
+            voice_threshold: 語音活動閾值時間戳 (若用戶最後語音時間早於此值則視為非活躍)
+            require_both: 若為 True，則同時滿足兩個條件才視為非活躍；若為 False，則滿足其一即視為非活躍
+            
+        回傳:
+            符合非活躍條件的用戶記錄列表。
+        """
+        await self.connect()
+        
+        query_parts = ["SELECT * FROM anti_dive WHERE guild_id = ?"]
+        params = [guild_id]
+        
+        message_condition = ""
+        voice_condition = ""
+        
+        if message_threshold is not None:
+            message_condition = "(last_message_time IS NULL OR last_message_time < ?)"
+            params.append(message_threshold)
+            
+        if voice_threshold is not None:
+            voice_condition = "(last_voice_time IS NULL OR last_voice_time < ?)"
+            params.append(voice_threshold)
+        
+        if message_condition and voice_condition:
+            if require_both:
+                query_parts.append(f"AND {message_condition} AND {voice_condition}")
+            else:
+                query_parts.append(f"AND ({message_condition} OR {voice_condition})")
+        elif message_condition:
+            query_parts.append(f"AND {message_condition}")
+        elif voice_condition:
+            query_parts.append(f"AND {voice_condition}")
+        
+        cursor = await self.conn.execute(" ".join(query_parts), tuple(params))
+        result = await cursor.fetchall()
+        return result
+        
+    async def delete_user_activity(self, *, guild_id: int, user_id: int) -> None:
+        """
+        刪除指定用戶的活動記錄。
+        
+        參數:
+            guild_id: 伺服器 ID
+            user_id: 用戶 ID
+        """
+        await self.connect()
+        await self.conn.execute(
+            "DELETE FROM anti_dive WHERE guild_id = ? AND user_id = ?",
+            (guild_id, user_id)
+        )
+        await self.conn.commit()

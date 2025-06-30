@@ -54,17 +54,13 @@ class Ban(commands.Cog):
         
         # 檢查使用者是否已經被封禁
         try:
-            ban_list = [entry.user.id async for entry in interaction.guild.bans()]
-            if user.id in ban_list:
-                return await interaction.followup.send("該使用者已經被封禁。", ephemeral=True)
+           await interaction.guild.fetch_ban(user)
+        except discord.NotFound:
+            pass
         except discord.Forbidden:
-            return await interaction.followup.send("無法檢查封禁列表，請確認機器人有足夠的權限。", ephemeral=True)
-        except discord.HTTPException:
-            log.exception("檢查封禁列表時發生 HTTP 錯誤")
-            return await interaction.followup.send("檢查封禁列表失敗，請稍後再試。", ephemeral=True)
-        except Exception as e:
-            log.exception("檢查封禁列表時發生錯誤")
-            return await interaction.followup.send(f"檢查封禁列表失敗: {e}", ephemeral=True)
+            return await interaction.followup.send("無法檢查使用者是否已被封禁，請確認機器人有足夠的權限。", ephemeral=True)
+        except Exception as _:
+            log.exception("檢查使用者是否已被封禁時發生錯誤")
         
         # 嘗試發送私訊給被封禁者
         if send_message:
