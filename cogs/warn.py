@@ -206,6 +206,6 @@ class Warn(commands.Cog):
 async def setup(bot: commands.Bot):
     try:
         await bot.add_cog(Warn(bot))
-        log.info("Warn cog 擴充已載入")
+        log.info("Warn 擴充已載入")
     except Exception:
         log.exception("無法載入 Warn cog")

@@ -43,4 +43,4 @@ class Ping(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Ping(bot))
-    log.info("Ping cog 已載入")
+    log.info("Ping 擴充已載入")
