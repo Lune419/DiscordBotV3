@@ -46,6 +46,16 @@ class Bot(commands.Bot):
             await self.db_manager.init_voice_db()
         except Exception as _:
             log.exception("初始化語音資料庫時發生錯誤")
+        
+        # 初始化臨時語音頻道系統
+        if "temp_voice" in self.cogs:
+            try:
+                # 確保臨時語音頻道的語音狀態監聽器已設置
+                temp_voice_cog = self.get_cog("TempVoice")
+                if temp_voice_cog:
+                    log.info("臨時語音頻道系統已初始化")
+            except Exception as e:
+                log.exception(f"初始化臨時語音頻道系統時發生錯誤: {e}")
 
         # 同步指令
         guild = discord.Object(id=cfg["guild_id"])
