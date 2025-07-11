@@ -23,7 +23,6 @@ class Warn(commands.Cog):
         self.guild_id = cfg["guild_id"]
         self.timezone = cfg["timezone"]
 
-    @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
     @app_commands.checks.has_permissions(manage_messages=True)
     @app_commands.command(name="warn", description="發送並記錄警告")
     @app_commands.describe(
@@ -105,7 +104,6 @@ class Warn(commands.Cog):
                 log.exception("Unexpected error on DM warn")
                 await interaction.followup.send("發送私訊時發生錯誤，請回報作者。", ephemeral=True)
 
-    @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
     @app_commands.checks.has_permissions(administrator=True, manage_messages=True)
     @app_commands.command(name="warns", description="查詢用戶的警告紀錄")
     @app_commands.describe(

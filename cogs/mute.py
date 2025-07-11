@@ -28,8 +28,6 @@ class Mute(commands.Cog):
         self.DBManager = bot.db_manager
         self.timezone = cfg["timezone"]
 
-
-    @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
     @app_commands.command(name="mute", description="禁言指定成員")
     @app_commands.describe(
         user="要禁言的成員",
@@ -102,8 +100,6 @@ class Mute(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-
-    @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
     @app_commands.command(name="unmute", description="解除禁言指定成員")
     @app_commands.describe(
         user="要解除禁言的成員",
@@ -152,7 +148,6 @@ class Mute(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-    @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
     @app_commands.command(name="mutes", description="查詢所有的禁言紀錄")
     @app_commands.describe(
         user="要查詢的用戶(預設輸出所有紀錄)",

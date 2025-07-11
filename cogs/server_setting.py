@@ -33,7 +33,6 @@ class ServerSetting(commands.Cog):
         }
         return descriptions.get(type, "未知日誌類型")
         
-    @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
     @app_commands.checks.has_permissions(manage_channels=True)
     @app_commands.command(name="set_log_channel", description="設定日誌頻道")
     async def set_log_channel(
@@ -52,7 +51,7 @@ class ServerSetting(commands.Cog):
         # 處理設置頻道或清除設置的情況
         if channel is None:
             # 如果沒有提供頻道，將值設置為 None 以清除設置
-            kwargs = {channel_type: None, "guild_id": self.guild_id}
+            kwargs = {channel_type: None, "guild_id": interaction.guild.id}
             await self.db_manager.set_settings(**kwargs)
             
             # 取得友善的頻道類型描述
@@ -67,7 +66,7 @@ class ServerSetting(commands.Cog):
             )
         else:
             # 如果提供了頻道，正常設置
-            kwargs = {channel_type: channel.id, "guild_id": self.guild_id}
+            kwargs = {channel_type: channel.id, "guild_id": interaction.guild.id}
             await self.db_manager.set_settings(**kwargs)
             
             # 取得友善的頻道類型描述
@@ -108,12 +107,11 @@ class ServerSetting(commands.Cog):
         # 如果沒有輸入，返回所有選項
         return options
     
-    @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
     @app_commands.checks.has_permissions(manage_channels=True)
     @app_commands.command(name="list_setting", description="列出伺服器設定")
     async def list_setting(self, interaction: discord.Interaction):
         
-        settings = await self.db_manager.get_settings(self.guild_id)
+        settings = await self.db_manager.get_settings(interaction.guild.id)
         
         now, _ = now_with_unix(self.timezone)
         
@@ -172,7 +170,7 @@ class ServerSetting(commands.Cog):
                     inline=False
                 )
         
-        embed.set_footer(text=f"伺服器 ID: {self.guild_id}")
+        embed.set_footer(text=f"伺服器 ID: {interaction.guild.id}")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot):

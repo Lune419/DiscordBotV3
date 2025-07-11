@@ -14,7 +14,6 @@ class PM(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
     @app_commands.command(name="pm", description="私訊指定用戶")
     @app_commands.describe(
         user="要私訊的用戶", message="要發送的訊息", anonymous="是否匿名（預設否）"

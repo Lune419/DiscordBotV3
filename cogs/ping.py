@@ -16,7 +16,6 @@ class Ping(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
     @app_commands.command(name="ping", description="顯示機器人的延遲")
     async def ping(self, interaction: discord.Interaction):
         """顯示機器人與Discord之間的延遲"""

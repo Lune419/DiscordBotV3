@@ -88,7 +88,6 @@ class AntiDive(commands.Cog):
             except Exception as _:
                 log.exception(f"更新用戶活動時發生錯誤")
                 
-    @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
     @app_commands.checks.has_permissions(manage_channels=True)
     @app_commands.command(name="check_dive", description="列出所有潛水仔")
     async def check_dive(
@@ -111,7 +110,7 @@ class AntiDive(commands.Cog):
         
         try:
             dive_users = await self.db_manager.get_inactive_users(
-                guild_id=self.guild_id,
+                guild_id=interaction.guild.id,
                 message_threshold=search_time,
                 require_both=False
             )
@@ -123,7 +122,7 @@ class AntiDive(commands.Cog):
 
             else:
                 # 獲取伺服器成員信息，以便顯示用戶名
-                guild = self.bot.get_guild(self.guild_id)
+                guild = self.bot.get_guild(interaction.guild.id)
                 
                 # 建立描述文字
                 description_lines = [f"找到 **{len(dive_users)}** 名潛水仔（超過 {time // 86400 if time else 3} 天未活動）：\n"]
@@ -212,7 +211,6 @@ class AntiDive(commands.Cog):
         # 如果沒有輸入，返回所有選項
         return options
     
-    @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
     @app_commands.checks.has_permissions(manage_channels=True)
     @app_commands.command(name="check_last_message", description="查詢最後發言時間")
     async def check_last_message(
@@ -228,7 +226,7 @@ class AntiDive(commands.Cog):
         try:
             # 從資料庫獲取用戶活動記錄
             activities = await self.db_manager.get_user_activity(
-                guild_id=self.guild_id,
+                guild_id=interaction.guild.id,
                 user_id=user.id
             )
             
@@ -449,7 +447,6 @@ class AntiDive(commands.Cog):
             log.exception(f"每日檢查潛水仔時發生錯誤: {e}")
             
             
-    @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
     @app_commands.checks.has_permissions(administrator=True)
     @app_commands.command(name="init_anti_dive", description="初始化反潛水系統")
     async def init_anti_dive(self, interaction: discord.Interaction):

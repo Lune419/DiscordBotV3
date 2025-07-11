@@ -20,7 +20,6 @@ class Ban(commands.Cog):
         self.guild_id = cfg["guild_id"]
         self.timezone = cfg["timezone"]
 
-    @app_commands.guilds(discord.Object(id=cfg["guild_id"]))
     @app_commands.checks.has_permissions(ban_members=True)
     @app_commands.checks.bot_has_permissions(ban_members=True)
     @app_commands.command(name="ban", description="Ban 指定的使用者")
