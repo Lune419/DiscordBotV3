@@ -58,8 +58,12 @@ class Bot(commands.Bot):
                 log.exception(f"初始化臨時語音頻道系統時發生錯誤: {e}")
 
         # 同步指令
+        """
         guild = discord.Object(id=cfg["guild_id"])
         synced = await self.tree.sync(guild=guild)
+        log.info(f"已同步{len(synced)}個指令")
+        """
+        synced = await self.tree.sync()
         log.info(f"已同步{len(synced)}個指令")
 
     async def on_ready(self) -> None:
