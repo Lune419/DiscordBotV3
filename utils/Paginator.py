@@ -41,11 +41,15 @@ class Paginator(View):
 
     @button(label="▶️", style=discord.ButtonStyle.primary)
     async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.current += 1
+        # 增加安全檢查，確保不會超出範圍
+        if self.current < len(self.embeds) - 1:
+            self.current += 1
         await self._update(interaction)
 
     async def _update(self, interaction: discord.Interaction):
         total = len(self.embeds)
+        # 增加額外安全檢查，確保 current 不會超出範圍
+        self.current = max(0, min(self.current, total - 1))
         self.previous.disabled = (self.current == 0)
         self.next.disabled = (self.current == total - 1)
         self.page_indicator.label = f"{self.current+1}/{total}"
