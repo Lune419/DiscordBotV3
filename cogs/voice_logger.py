@@ -66,7 +66,7 @@ class _VoiceLoggerSendToChannel():
     async def get_log_channel(self, guild_id: int) -> discord.TextChannel | None:
         """獲取日誌頻道"""
         settings = await self.bot.db_manager.get_settings(guild_id)
-        if not settings or not settings.get("voice_log_channel"):
+        if not settings or not settings["voice_log_channel"]:
             return None
         
         log_channel = self.bot.get_channel(settings["voice_log_channel"])
