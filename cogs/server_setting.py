@@ -172,7 +172,7 @@ class ServerSetting(commands.Cog):
         
         embed.set_footer(text=f"伺服器 ID: {interaction.guild.id}")
         await interaction.response.send_message(embed=embed, ephemeral=True)
-
+        
 async def setup(bot):
     await bot.add_cog(ServerSetting(bot))
     log.info("ServerSetting 擴充已載入")
