@@ -197,3 +197,5 @@ cython_debug/
 
 # database
 database/
+
+.DS_Store
