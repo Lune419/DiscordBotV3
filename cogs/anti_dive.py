@@ -112,8 +112,8 @@ class AntiDive(commands.Cog):
             dive_users = await self.db_manager.get_inactive_users(
                 guild_id=interaction.guild.id,
                 message_threshold=search_time,
-                require_both=False
-            )
+                require_both=True
+                )
             
             if not dive_users:
                 embed.description = "目前沒有潛水仔"
