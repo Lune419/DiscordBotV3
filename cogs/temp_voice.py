@@ -166,7 +166,6 @@ class TempVoice(commands.Cog):
             # 直接發送到語音頻道的內置文字聊天
             try:
                 message = await channel.send(
-                    content=f"{owner.mention}",
                     embed=embed, 
                     view=view
                 )
@@ -664,7 +663,7 @@ class VoiceChannelControlView(discord.ui.View):
         )
         
         embed.add_field(name="📍 當前狀態", value=f'{region} ｜ {status}', inline=False)
-        embed.add_field(name="👑 頻道擁有者", value=owner.display_name, inline=False)
+        embed.add_field(name="👑 頻道擁有者", value=owner.mention, inline=False)
         
         # 處理時間戳
         try:
@@ -710,7 +709,6 @@ class VoiceChannelControlView(discord.ui.View):
                     # 嘗試獲取並更新原始控制面板訊息
                     control_message = await self.channel.fetch_message(control_message_id)
                     await control_message.edit(
-                        content=f"{owner.mention}",
                         embed=new_embed, 
                         view=self
                     )
@@ -1205,7 +1203,7 @@ class ChannelInheritanceView(discord.ui.View):
                         # 更新控制面板的擁有者
                         new_view = VoiceChannelControlView(self.channel, interaction.user.id, self.cog)
                         new_embed = await new_view.create_panel_embed(self.channel, interaction.user, child_info['created_at'])
-                        await control_message.edit(content=f"{interaction.user.mention}", embed=new_embed, view=new_view)
+                        await control_message.edit(embed=new_embed, view=new_view)
                 except discord.NotFound:
                     # 如果控制面板訊息不存在，發送新的
                     await self.cog.send_control_panel(self.channel, interaction.user)
