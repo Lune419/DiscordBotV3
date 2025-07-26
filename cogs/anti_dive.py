@@ -112,6 +112,7 @@ class AntiDive(commands.Cog):
             dive_users = await self.db_manager.get_inactive_users(
                 guild_id=interaction.guild.id,
                 message_threshold=search_time,
+                voice_threshold=search_time,
                 require_both=True
                 )
             
@@ -354,7 +355,7 @@ class AntiDive(commands.Cog):
                         guild_id=guild.id,
                         message_threshold=search_time,
                         voice_threshold=search_time,
-                        require_both=False
+                        require_both=True
                     )
                     
                     if not dive_users:
