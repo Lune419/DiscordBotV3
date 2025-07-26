@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 
 from utils.Temp_vioce_database import TempVoiceDatabase
+from utils.time_utils import now_with_unix
 
 log = logging.getLogger(__name__)
 
@@ -667,17 +668,24 @@ class VoiceChannelControlView(discord.ui.View):
         
         # 處理時間戳
         try:
-            if isinstance(created_at, str):
-                # 如果是字符串，嘗試解析
-                from datetime import datetime
-                created_time = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            if isinstance(created_at, (int, float)):
+                # 如果是數字（UNIX 時間戳），直接使用
+                timestamp = int(created_at)
+            elif isinstance(created_at, str):
+                # 如果是字符串，嘗試解析為 UNIX 時間戳
+                try:
+                    timestamp = int(created_at)
+                except ValueError:
+                    # 如果不是數字字符串，嘗試解析為 ISO 格式
+                    created_time = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    timestamp = int(created_time.timestamp())
             else:
                 # 如果是其他類型，使用當前時間
-                created_time = datetime.now()
+                _, timestamp = now_with_unix(cfg["timezone"])
             
-            timestamp = int(created_time.timestamp())
             embed.add_field(name="📅 建立時間", value=f'<t:{timestamp}:F> (<t:{timestamp}:R>)', inline=False)
-        except:
+        except Exception as e:
+            log.warning(f"處理建立時間時發生錯誤: {e}")
             embed.add_field(name="📅 建立時間", value="剛剛", inline=False)
         
         embed.add_field(name=" 人數上限", value=str(channel.user_limit) if channel.user_limit else "無限制", inline=True)

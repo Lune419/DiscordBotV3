@@ -1,6 +1,7 @@
 import os
 import aiosqlite
 import logging
+import time
 from typing import Optional
 
 log = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ class TempVoiceDatabase:
             channel_id INTEGER PRIMARY KEY NOT NULL,
             category_id INTEGER,
             template TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at INTEGER DEFAULT (unixepoch()),
             UNIQUE(guild_id, channel_id)
         )
         ''')
@@ -54,7 +55,7 @@ class TempVoiceDatabase:
             channel_id INTEGER PRIMARY KEY NOT NULL,
             owner_id INTEGER NOT NULL,
             control_message_id INTEGER,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at INTEGER DEFAULT (unixepoch()),
             UNIQUE(guild_id, channel_id),
             FOREIGN KEY (parent_channel_id) REFERENCES parent_channels(channel_id) ON DELETE CASCADE
         )
@@ -68,7 +69,66 @@ class TempVoiceDatabase:
         # 提交更改
         await self.conn.commit()
         
+        # 執行數據遷移（將舊的時間戳格式轉換為 UNIX 時間戳）
+        await self._migrate_timestamps()
+        
         log.info("已初始化臨時語音頻道資料庫")
+        
+    async def _migrate_timestamps(self):
+        """遷移舊的時間戳格式為 UNIX 時間戳"""
+        try:
+            # 檢查是否需要遷移子頻道表
+            async with self.conn.execute("SELECT created_at FROM child_channels LIMIT 1") as cursor:
+                row = await cursor.fetchone()
+                if row and row['created_at']:
+                    # 檢查是否為字符串格式（需要遷移）
+                    created_at = row['created_at']
+                    if isinstance(created_at, str) and not created_at.isdigit():
+                        log.info("開始遷移子頻道時間戳...")
+                        # 更新所有字符串格式的時間戳
+                        await self.conn.execute("""
+                            UPDATE child_channels 
+                            SET created_at = cast(unixepoch(created_at) as integer)
+                            WHERE typeof(created_at) = 'text' AND created_at NOT GLOB '[0-9]*'
+                        """)
+                        
+                        # 處理無效的時間戳，設為當前時間
+                        await self.conn.execute("""
+                            UPDATE child_channels 
+                            SET created_at = cast(unixepoch() as integer)
+                            WHERE created_at IS NULL OR created_at = 0
+                        """)
+                        
+                        await self.conn.commit()
+                        log.info("子頻道時間戳遷移完成")
+                        
+            # 檢查是否需要遷移母頻道表
+            async with self.conn.execute("SELECT created_at FROM parent_channels LIMIT 1") as cursor:
+                row = await cursor.fetchone()
+                if row and row['created_at']:
+                    created_at = row['created_at']
+                    if isinstance(created_at, str) and not created_at.isdigit():
+                        log.info("開始遷移母頻道時間戳...")
+                        # 更新所有字符串格式的時間戳
+                        await self.conn.execute("""
+                            UPDATE parent_channels 
+                            SET created_at = cast(unixepoch(created_at) as integer)
+                            WHERE typeof(created_at) = 'text' AND created_at NOT GLOB '[0-9]*'
+                        """)
+                        
+                        # 處理無效的時間戳，設為當前時間
+                        await self.conn.execute("""
+                            UPDATE parent_channels 
+                            SET created_at = cast(unixepoch() as integer)
+                            WHERE created_at IS NULL OR created_at = 0
+                        """)
+                        
+                        await self.conn.commit()
+                        log.info("母頻道時間戳遷移完成")
+                        
+        except Exception as e:
+            log.warning(f"時間戳遷移過程中發生錯誤: {e}")
+            # 即使遷移失敗，也不影響正常功能
         
     async def close(self):
         """關閉資料庫連線"""
@@ -182,12 +242,15 @@ class TempVoiceDatabase:
         """新增一個子頻道"""
         await self.connect()
         
+        # 使用當前的 UNIX 時間戳
+        current_timestamp = int(time.time())
+        
         query = '''
         INSERT INTO child_channels 
-        (guild_id, parent_channel_id, channel_id, owner_id, control_message_id)
-        VALUES (?, ?, ?, ?, ?)
+        (guild_id, parent_channel_id, channel_id, owner_id, control_message_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         '''
-        await self.conn.execute(query, (guild_id, parent_channel_id, channel_id, owner_id, control_message_id))
+        await self.conn.execute(query, (guild_id, parent_channel_id, channel_id, owner_id, control_message_id, current_timestamp))
         await self.conn.commit()
         
     async def get_child_channel(self, channel_id: int):
