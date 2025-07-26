@@ -191,4 +191,5 @@ class Clear(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Clear(bot))
+    log.info("Clear 擴充已載入")
 
