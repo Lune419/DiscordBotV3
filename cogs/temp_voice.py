@@ -431,6 +431,43 @@ class TempVoice(commands.Cog):
         except Exception as e:
             log.exception("強制清理時發生錯誤")
             await interaction.followup.send("清理時發生錯誤，請稍後再試。", ephemeral=True)
+
+    @app_commands.command(name="admin_panel", description="開啟臨時語音頻道管理員控制面板")
+    @app_commands.describe(channel="要管理的臨時語音頻道 (可選，不填則使用當前所在頻道)")
+    @app_commands.checks.has_permissions(manage_channels=True)
+    async def admin_panel(self, interaction: discord.Interaction, channel: Optional[discord.VoiceChannel] = None):
+        """開啟管理員控制面板"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # 如果沒有指定頻道，使用用戶當前所在的語音頻道
+            if channel is None:
+                if not interaction.user.voice or not interaction.user.voice.channel:
+                    await interaction.followup.send("❌ 您必須在語音頻道中或指定一個頻道", ephemeral=True)
+                    return
+                channel = interaction.user.voice.channel
+            
+            # 檢查是否為子頻道
+            is_child = await self.TempVoiceDatabase.is_child_channel(channel.id)
+            if not is_child:
+                await interaction.followup.send("❌ 此頻道不是臨時語音頻道", ephemeral=True)
+                return
+            
+            # 獲取子頻道信息
+            child_info = await self.TempVoiceDatabase.get_child_channel(channel.id)
+            if not child_info:
+                await interaction.followup.send("❌ 無法獲取頻道信息", ephemeral=True)
+                return
+            
+            # 創建管理員面板
+            view = AdminPanelView(channel, child_info, self)
+            embed = await view.create_admin_embed(channel, child_info, interaction.guild)
+            
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            
+        except Exception as e:
+            log.exception("開啟管理員面板時發生錯誤")
+            await interaction.followup.send("❌ 開啟管理員面板時發生錯誤", ephemeral=True)
             
 class VoiceChannelControlView(discord.ui.View):
     """語音頻道控制面板視圖"""
@@ -1254,6 +1291,334 @@ class ChannelInheritanceView(discord.ui.View):
                     await interaction.followup.send(error_message, ephemeral=True)
                 except:
                     pass
+
+class AdminPanelView(discord.ui.View):
+    """管理員控制面板視圖"""
+    
+    def __init__(self, channel: discord.VoiceChannel, child_info, cog):
+        super().__init__(timeout=300)  # 5分鐘超時
+        self.channel = channel
+        self.child_info = child_info
+        self.cog = cog
+    
+    async def create_admin_embed(self, channel: discord.VoiceChannel, child_info, guild: discord.Guild) -> discord.Embed:
+        """創建管理員面板嵌入"""
+        embed = discord.Embed(
+            title="🛡️ 管理員控制面板",
+            description=f"管理頻道：{channel.mention}",
+            color=discord.Color.red()
+        )
+        
+        # 獲取頻道擁有者
+        owner = guild.get_member(child_info['owner_id'])
+        owner_name = owner.display_name if owner else f"未知用戶 (ID: {child_info['owner_id']})"
+        
+        # 獲取母頻道
+        parent_channel = guild.get_channel(child_info['parent_channel_id'])
+        parent_name = parent_channel.name if parent_channel else f"已刪除頻道 (ID: {child_info['parent_channel_id']})"
+        
+        # 頻道狀態
+        overwrite = channel.overwrites_for(guild.default_role)
+        if overwrite.connect is False and overwrite.view_channel is False:
+            status = "👻 隱藏"
+        elif overwrite.connect is False:
+            status = "🔒 鎖定"
+        else:
+            status = "🔓 公開"
+        
+        embed.add_field(name="👑 當前擁有者", value=owner_name, inline=True)
+        embed.add_field(name="📍 狀態", value=status, inline=True)
+        embed.add_field(name="👥 當前人數", value=f"{len(channel.members)}/{channel.user_limit or '∞'}", inline=True)
+        embed.add_field(name="🏠 母頻道", value=parent_name, inline=True)
+        embed.add_field(name="🆔 頻道ID", value=f"`{channel.id}`", inline=True)
+        
+        # 處理建立時間
+        try:
+            if isinstance(child_info['created_at'], (int, float)):
+                timestamp = int(child_info['created_at'])
+            else:
+                timestamp = int(child_info['created_at'])
+            embed.add_field(name="📅 建立時間", value=f"<t:{timestamp}:R>", inline=True)
+        except:
+            embed.add_field(name="📅 建立時間", value="未知", inline=True)
+        
+        embed.set_footer(text="⚠️ 管理員專用面板 - 請謹慎使用")
+        
+        return embed
+    
+    @discord.ui.button(label="強制奪取擁有權", style=discord.ButtonStyle.danger, emoji="👑", row=0)
+    async def force_take_ownership(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """強制奪取頻道擁有權"""
+        try:
+            # 獲取舊擁有者
+            old_owner_id = self.child_info['owner_id']
+            old_owner = interaction.guild.get_member(old_owner_id)
+            
+            # 移除舊擁有者的權限
+            if old_owner:
+                await self.channel.set_permissions(old_owner, overwrite=None)
+            
+            # 給予新擁有者權限
+            overwrite = self.channel.overwrites_for(interaction.user)
+            overwrite.connect = True
+            overwrite.mute_members = True
+            overwrite.deafen_members = True
+            overwrite.move_members = True
+            overwrite.manage_channels = True
+            await self.channel.set_permissions(interaction.user, overwrite=overwrite)
+            
+            # 更新資料庫
+            await self.cog.TempVoiceDatabase.update_child_channel_owner(self.channel.id, interaction.user.id)
+            
+            # 更新控制面板（如果存在）
+            if self.child_info['control_message_id']:
+                try:
+                    control_message = await self.channel.fetch_message(self.child_info['control_message_id'])
+                    new_view = VoiceChannelControlView(self.channel, interaction.user.id, self.cog)
+                    new_embed = await new_view.create_panel_embed(self.channel, interaction.user, self.child_info['created_at'])
+                    await control_message.edit(embed=new_embed, view=new_view)
+                except:
+                    pass
+            
+            # 在頻道中發送通知
+            await self.channel.send(f"⚠️ 管理員 {interaction.user.mention} 已強制接管此頻道的擁有權")
+            
+            await interaction.response.send_message(f"✅ 已成功奪取 {self.channel.mention} 的擁有權", ephemeral=True)
+            
+        except Exception as e:
+            await interaction.response.send_message(f"❌ 奪取擁有權失敗：{str(e)}", ephemeral=True)
+    
+    @discord.ui.button(label="強制刪除頻道", style=discord.ButtonStyle.danger, emoji="🗑️", row=0)
+    async def force_delete_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """強制刪除頻道"""
+        # 創建確認視圖
+        confirm_view = ConfirmDeleteView(self.channel, self.cog)
+        embed = discord.Embed(
+            title="⚠️ 確認刪除",
+            description=f"您確定要刪除頻道 {self.channel.mention} 嗎？\n\n**此操作無法撤銷！**",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=embed, view=confirm_view, ephemeral=True)
+    
+    @discord.ui.button(label="轉移擁有權", style=discord.ButtonStyle.primary, emoji="🔄", row=0)
+    async def transfer_ownership(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """轉移頻道擁有權給其他成員"""
+        # 獲取頻道中的成員（排除機器人和當前擁有者）
+        members = [m for m in self.channel.members if not m.bot and m.id != self.child_info['owner_id']]
+        
+        if not members:
+            await interaction.response.send_message("❌ 頻道中沒有可轉移的成員", ephemeral=True)
+            return
+        
+        view = TransferOwnershipView(members, self.channel, self.child_info, self.cog)
+        await interaction.response.send_message("🔄 請選擇新的擁有者：", view=view, ephemeral=True)
+    
+    @discord.ui.button(label="踢出所有成員", style=discord.ButtonStyle.danger, emoji="👢", row=1)
+    async def kick_all_members(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """踢出頻道中所有成員"""
+        try:
+            kicked_members = []
+            for member in self.channel.members:
+                if member.id != self.child_info['owner_id'] and not member.bot:
+                    try:
+                        await member.move_to(None)
+                        kicked_members.append(member.display_name)
+                    except:
+                        pass
+            
+            if kicked_members:
+                await interaction.response.send_message(
+                    f"👢 已踢出 {len(kicked_members)} 名成員：{', '.join(kicked_members[:5])}{'...' if len(kicked_members) > 5 else ''}",
+                    ephemeral=True
+                )
+                # 在頻道中發送通知
+                await self.channel.send(f"⚠️ 管理員 {interaction.user.mention} 已清空頻道")
+            else:
+                await interaction.response.send_message("ℹ️ 頻道中沒有可踢出的成員", ephemeral=True)
+                
+        except Exception as e:
+            await interaction.response.send_message(f"❌ 踢出成員失敗：{str(e)}", ephemeral=True)
+    
+    @discord.ui.button(label="重置權限", style=discord.ButtonStyle.secondary, emoji="🔄", row=1)
+    async def reset_permissions(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """重置頻道權限為預設狀態"""
+        try:
+            # 清除所有權限覆寫（除了機器人和擁有者）
+            owner = interaction.guild.get_member(self.child_info['owner_id'])
+            bot_member = interaction.guild.me
+            
+            for target in list(self.channel.overwrites.keys()):
+                if target != owner and target != bot_member:
+                    await self.channel.set_permissions(target, overwrite=None)
+            
+            # 設定預設狀態（公開）
+            default_overwrite = discord.PermissionOverwrite()
+            default_overwrite.connect = True
+            default_overwrite.view_channel = True
+            await self.channel.set_permissions(self.channel.guild.default_role, overwrite=default_overwrite)
+            
+            # 更新控制面板
+            if self.child_info['control_message_id']:
+                try:
+                    control_message = await self.channel.fetch_message(self.child_info['control_message_id'])
+                    if owner:
+                        view = VoiceChannelControlView(self.channel, owner.id, self.cog)
+                        embed = await view.create_panel_embed(self.channel, owner, self.child_info['created_at'])
+                        await control_message.edit(embed=embed, view=view)
+                except:
+                    pass
+            
+            await interaction.response.send_message("🔄 頻道權限已重置為預設狀態", ephemeral=True)
+            await self.channel.send(f"⚠️ 管理員 {interaction.user.mention} 已重置頻道權限")
+            
+        except Exception as e:
+            await interaction.response.send_message(f"❌ 重置權限失敗：{str(e)}", ephemeral=True)
+    
+    @discord.ui.button(label="查看詳細信息", style=discord.ButtonStyle.secondary, emoji="📊", row=1)
+    async def view_details(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """查看頻道詳細信息"""
+        embed = discord.Embed(
+            title="📊 頻道詳細信息",
+            description=f"頻道：{self.channel.mention}",
+            color=discord.Color.blue()
+        )
+        
+        # 基本信息
+        embed.add_field(name="🆔 頻道ID", value=f"`{self.channel.id}`", inline=True)
+        embed.add_field(name="🏠 母頻道ID", value=f"`{self.child_info['parent_channel_id']}`", inline=True)
+        embed.add_field(name="👑 擁有者ID", value=f"`{self.child_info['owner_id']}`", inline=True)
+        embed.add_field(name="🎵 比特率", value=f"{self.channel.bitrate} bps", inline=True)
+        embed.add_field(name="🌍 地區", value=str(self.channel.rtc_region) or "自動", inline=True)
+        embed.add_field(name="📹 視頻品質", value=str(self.channel.video_quality_mode).split('.')[-1], inline=True)
+        
+        # 權限設定
+        permissions_text = []
+        for target, overwrite in self.channel.overwrites.items():
+            name = target.display_name if isinstance(target, discord.Member) else target.name
+            perms = []
+            if overwrite.connect is True:
+                perms.append("✅連接")
+            elif overwrite.connect is False:
+                perms.append("❌連接")
+            if overwrite.view_channel is True:
+                perms.append("✅查看")
+            elif overwrite.view_channel is False:
+                perms.append("❌查看")
+            if perms:
+                permissions_text.append(f"**{name}**: {', '.join(perms)}")
+        
+        if permissions_text:
+            embed.add_field(
+                name="🔐 權限設定",
+                value="\n".join(permissions_text[:10]) + ("..." if len(permissions_text) > 10 else ""),
+                inline=False
+            )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+class ConfirmDeleteView(discord.ui.View):
+    """確認刪除視圖"""
+    
+    def __init__(self, channel: discord.VoiceChannel, cog):
+        super().__init__(timeout=30)
+        self.channel = channel
+        self.cog = cog
+    
+    @discord.ui.button(label="確認刪除", style=discord.ButtonStyle.danger, emoji="🗑️")
+    async def confirm_delete(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """確認刪除頻道"""
+        try:
+            channel_name = self.channel.name
+            await self.cog.delete_child_channel(self.channel)
+            await interaction.response.send_message(f"✅ 已成功刪除頻道 `{channel_name}`", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ 刪除頻道失敗：{str(e)}", ephemeral=True)
+    
+    @discord.ui.button(label="取消", style=discord.ButtonStyle.secondary, emoji="❌")
+    async def cancel_delete(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """取消刪除"""
+        await interaction.response.send_message("❌ 已取消刪除操作", ephemeral=True)
+
+class TransferOwnershipView(discord.ui.View):
+    """轉移擁有權視圖"""
+    
+    def __init__(self, members: List[discord.Member], channel: discord.VoiceChannel, child_info, cog):
+        super().__init__(timeout=60)
+        self.members = members
+        self.channel = channel
+        self.child_info = child_info
+        self.cog = cog
+        
+        # 添加選擇選單  
+        select = TransferOwnershipSelect(members, channel, child_info, cog)
+        self.add_item(select)
+
+class TransferOwnershipSelect(discord.ui.Select):
+    """轉移擁有權選擇選單"""
+    
+    def __init__(self, members: List[discord.Member], channel: discord.VoiceChannel, child_info, cog):
+        self.channel = channel
+        self.child_info = child_info
+        self.cog = cog
+        
+        options = []
+        for member in members[:25]:  # Discord 限制最多25個選項
+            options.append(discord.SelectOption(
+                label=member.display_name,
+                value=str(member.id),
+                description=f"@{member.name}"
+            ))
+        
+        super().__init__(
+            placeholder="選擇新的擁有者...",
+            options=options
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        try:
+            new_owner_id = int(self.values[0])
+            new_owner = interaction.guild.get_member(new_owner_id)
+            
+            if not new_owner:
+                await interaction.response.send_message("❌ 找不到選擇的成員", ephemeral=True)
+                return
+            
+            # 獲取舊擁有者
+            old_owner = interaction.guild.get_member(self.child_info['owner_id'])
+            
+            # 移除舊擁有者的權限
+            if old_owner:
+                await self.channel.set_permissions(old_owner, overwrite=None)
+            
+            # 給予新擁有者權限
+            overwrite = self.channel.overwrites_for(new_owner)
+            overwrite.connect = True
+            overwrite.mute_members = True
+            overwrite.deafen_members = True
+            overwrite.move_members = True
+            overwrite.manage_channels = True
+            await self.channel.set_permissions(new_owner, overwrite=overwrite)
+            
+            # 更新資料庫
+            await self.cog.TempVoiceDatabase.update_child_channel_owner(self.channel.id, new_owner_id)
+            
+            # 更新控制面板（如果存在）
+            if self.child_info['control_message_id']:
+                try:
+                    control_message = await self.channel.fetch_message(self.child_info['control_message_id'])
+                    new_view = VoiceChannelControlView(self.channel, new_owner_id, self.cog)
+                    new_embed = await new_view.create_panel_embed(self.channel, new_owner, self.child_info['created_at'])
+                    await control_message.edit(embed=new_embed, view=new_view)
+                except:
+                    pass
+            
+            # 在頻道中發送通知
+            await self.channel.send(f"🔄 管理員 {interaction.user.mention} 已將頻道擁有權轉移給 {new_owner.mention}")
+            
+            await interaction.response.send_message(f"✅ 已成功將擁有權轉移給 {new_owner.display_name}", ephemeral=True)
+            
+        except Exception as e:
+            await interaction.response.send_message(f"❌ 轉移擁有權失敗：{str(e)}", ephemeral=True)
 
 async def setup(bot):
     """載入擴充"""

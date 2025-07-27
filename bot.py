@@ -4,8 +4,11 @@ import logging
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-load_dotenv() 
+try:
+    from dotenv import load_dotenv
+    load_dotenv() 
+except Exception:
+    pass
 
 import discord
 from discord.ext import commands
