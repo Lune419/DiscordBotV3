@@ -128,7 +128,10 @@ class AntiDive(commands.Cog):
                 # 建立描述文字
                 description_lines = [f"找到 **{len(dive_users)}** 名潛水仔（超過 {time // 86400 if time else 3} 天未活動）：\n"]
                 
-                for user in dive_users:
+                # 按照最後活動時間排序（最久沒活動的在最上面）
+                dive_users_sorted = sorted(dive_users, key=lambda user: max(user["last_message_time"] or 0, user["last_voice_time"] or 0))
+                
+                for user in dive_users_sorted:
                     user_id = user["user_id"]
                     member = guild.get_member(user_id) if guild else None
                     
@@ -137,11 +140,13 @@ class AntiDive(commands.Cog):
                     last_voice = user["last_voice_time"] or 0
                     last_activity = max(last_message, last_voice)
                     
-                    # 格式化用戶資料
+                    # 格式化用戶資料 - 如果是初始值1則顯示沒有聊天紀錄
+                    activity_text = "沒有聊天紀錄" if last_activity == 1 else f"<t:{last_activity}:R>"
+                    
                     if member:
-                        user_line = f"• <@{user_id}> ({member.display_name}) - 最後活動: <t:{last_activity}:R>"
+                        user_line = f"• <@{user_id}> ({member.display_name}) - 最後活動: {activity_text}"
                     else:
-                        user_line = f"• <@{user_id}> (已離開伺服器) - 最後活動: <t:{last_activity}:R>"
+                        user_line = f"• <@{user_id}> (已離開伺服器) - 最後活動: {activity_text}"
                     
                     description_lines.append(user_line)
                 
@@ -277,17 +282,21 @@ class AntiDive(commands.Cog):
                 # 顯示各種活動時間
                 activity_details = []
                 
-                if last_message_time:
+                if last_message_time and last_message_time != 1:
                     activity_details.append(f"**最後發言:** <t:{last_message_time}:F> (<t:{last_message_time}:R>)")
+                elif last_message_time == 1:
+                    activity_details.append("**最後發言:** 沒有聊天紀錄")
                 else:
                     activity_details.append("**最後發言:** 無紀錄")
                     
-                if last_voice_time:
+                if last_voice_time and last_voice_time != 1:
                     activity_details.append(f"**最後語音:** <t:{last_voice_time}:F> (<t:{last_voice_time}:R>)")
+                elif last_voice_time == 1:
+                    activity_details.append("**最後語音:** 沒有聊天紀錄")
                 else:
                     activity_details.append("**最後語音:** 無紀錄")
                     
-                if last_activity_time > 0:
+                if last_activity_time > 1:  # 大於1才顯示時間戳
                     activity_details.append(f"**最後活動:** <t:{last_activity_time}:F> (<t:{last_activity_time}:R>)")
                     
                     # 計算不活躍天數
@@ -302,6 +311,9 @@ class AntiDive(commands.Cog):
                             embed.color = discord.Color.orange()
                         elif inactive_days >= 7:
                             embed.color = discord.Color.yellow()
+                elif last_activity_time == 1:
+                    activity_details.append("**最後活動:** 沒有聊天紀錄")
+                    embed.color = discord.Color.dark_gray()
                 else:
                     activity_details.append("**最後活動:** 無紀錄")
                     embed.color = discord.Color.dark_gray()
@@ -384,7 +396,10 @@ class AntiDive(commands.Cog):
                     # 建立描述文字
                     description_lines = [f"發現 **{len(dive_users)}** 名潛水仔（超過 3 天未活動）：\n"]
                     
-                    for user in dive_users:
+                    # 按照最後活動時間排序（最久沒活動的在最上面）
+                    dive_users_sorted = sorted(dive_users, key=lambda user: max(user["last_message_time"] or 0, user["last_voice_time"] or 0))
+                    
+                    for user in dive_users_sorted:
                         user_id = user["user_id"]
                         member = guild.get_member(user_id)
                         
@@ -393,11 +408,13 @@ class AntiDive(commands.Cog):
                         last_voice = user["last_voice_time"] or 0
                         last_activity = max(last_message, last_voice)
                         
-                        # 格式化用戶資料
+                        # 格式化用戶資料 - 如果是初始值1則顯示沒有聊天紀錄
+                        activity_text = "沒有聊天紀錄" if last_activity == 1 else f"<t:{last_activity}:R>"
+                        
                         if member:
-                            user_line = f"• <@{user_id}> ({member.display_name}) - 最後活動: <t:{last_activity}:R>"
+                            user_line = f"• <@{user_id}> ({member.display_name}) - 最後活動: {activity_text}"
                         else:
-                            user_line = f"• <@{user_id}> (已離開伺服器) - 最後活動: <t:{last_activity}:R>"
+                            user_line = f"• <@{user_id}> (已離開伺服器) - 最後活動: {activity_text}"
                         
                         description_lines.append(user_line)
                     
