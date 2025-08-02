@@ -125,30 +125,65 @@ class AntiDive(commands.Cog):
                 # 獲取伺服器成員信息，以便顯示用戶名
                 guild = self.bot.get_guild(interaction.guild.id)
                 
-                # 建立描述文字
-                description_lines = [f"找到 **{len(dive_users)}** 名潛水仔（超過 {time // 86400 if time else 3} 天未活動）：\n"]
+                # 分離沒有聊天紀錄的用戶和真正潛水的用戶
+                no_record_users = []
+                diving_users = []
                 
-                # 按照最後活動時間排序（最久沒活動的在最上面）
-                dive_users_sorted = sorted(dive_users, key=lambda user: max(user["last_message_time"] or 0, user["last_voice_time"] or 0))
-                
-                for user in dive_users_sorted:
-                    user_id = user["user_id"]
-                    member = guild.get_member(user_id) if guild else None
-                    
-                    # 計算最後活動時間 (取最近的訊息或語音時間)
+                for user in dive_users:
                     last_message = user["last_message_time"] or 0
                     last_voice = user["last_voice_time"] or 0
                     last_activity = max(last_message, last_voice)
                     
-                    # 格式化用戶資料 - 如果是初始值1則顯示沒有聊天紀錄
-                    activity_text = "沒有聊天紀錄" if last_activity == 1 else f"<t:{last_activity}:R>"
-                    
-                    if member:
-                        user_line = f"• <@{user_id}> ({member.display_name}) - 最後活動: {activity_text}"
+                    if last_activity == 1:
+                        no_record_users.append(user)
                     else:
-                        user_line = f"• <@{user_id}> (已離開伺服器) - 最後活動: {activity_text}"
+                        diving_users.append(user)
+                
+                # 建立描述文字
+                description_lines = []
+                
+                # 先顯示真正潛水的用戶（按照最後活動時間排序，最久沒活動的在最上面）
+                if diving_users:
+                    diving_users_sorted = sorted(diving_users, key=lambda user: max(user["last_message_time"] or 0, user["last_voice_time"] or 0))
+                    description_lines.append(f"🏊‍♂️ **潛水用戶** ({len(diving_users)} 名)：\n")
                     
-                    description_lines.append(user_line)
+                    for user in diving_users_sorted:
+                        user_id = user["user_id"]
+                        member = guild.get_member(user_id) if guild else None
+                        
+                        # 計算最後活動時間 (取最近的訊息或語音時間)
+                        last_message = user["last_message_time"] or 0
+                        last_voice = user["last_voice_time"] or 0
+                        last_activity = max(last_message, last_voice)
+                        
+                        if member:
+                            user_line = f"• <@{user_id}> ({member.display_name}) - 最後活動: <t:{last_activity}:R>"
+                        else:
+                            user_line = f"• <@{user_id}> (已離開伺服器) - 最後活動: <t:{last_activity}:R>"
+                        
+                        description_lines.append(user_line)
+                
+                # 再顯示沒有聊天紀錄的用戶
+                if no_record_users:
+                    if diving_users:  # 如果前面有潛水用戶，加個空行分隔
+                        description_lines.append("")
+                    description_lines.append(f"📝 **沒有聊天紀錄** ({len(no_record_users)} 名)：\n")
+                    
+                    for user in no_record_users:
+                        user_id = user["user_id"]
+                        member = guild.get_member(user_id) if guild else None
+                        
+                        if member:
+                            user_line = f"• <@{user_id}> ({member.display_name}) - 沒有聊天紀錄"
+                        else:
+                            user_line = f"• <@{user_id}> (已離開伺服器) - 沒有聊天紀錄"
+                        
+                        description_lines.append(user_line)
+                
+                # 在開頭加上總結
+                total_count = len(diving_users) + len(no_record_users)
+                summary = f"找到 **{total_count}** 名用戶（超過 {time // 86400 if time else 3} 天未活動）\n"
+                description_lines.insert(0, summary)
                 
                 # 當潛水仔太多，可能會超過 Discord 的 description 長度限制 (4096 字元)
                 # 因此需要分割成多個 embed
@@ -336,7 +371,7 @@ class AntiDive(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
             
-    @tasks.loop(time=time(hour=15,minute=29, tzinfo=ZoneInfo(cfg["timezone"])))
+    @tasks.loop(time=time(hour=18,minute=30, tzinfo=ZoneInfo(cfg["timezone"])))
     async def daily_check_dive(self):
         """每日自動檢查潛水仔"""
         now, ts = now_with_unix(self.timezone)
@@ -394,29 +429,64 @@ class AntiDive(commands.Cog):
                     embed.set_footer(text=f"伺服器: {guild.name} | ID: {guild.id}")
                     
                     # 建立描述文字
-                    description_lines = [f"發現 **{len(dive_users)}** 名潛水仔（超過 3 天未活動）：\n"]
+                    description_lines = []
                     
-                    # 按照最後活動時間排序（最久沒活動的在最上面）
-                    dive_users_sorted = sorted(dive_users, key=lambda user: max(user["last_message_time"] or 0, user["last_voice_time"] or 0))
+                    # 分離沒有聊天紀錄的用戶和真正潛水的用戶
+                    no_record_users = []
+                    diving_users = []
                     
-                    for user in dive_users_sorted:
-                        user_id = user["user_id"]
-                        member = guild.get_member(user_id)
-                        
-                        # 計算最後活動時間 (取最近的訊息或語音時間)
+                    for user in dive_users:
                         last_message = user["last_message_time"] or 0
                         last_voice = user["last_voice_time"] or 0
                         last_activity = max(last_message, last_voice)
                         
-                        # 格式化用戶資料 - 如果是初始值1則顯示沒有聊天紀錄
-                        activity_text = "沒有聊天紀錄" if last_activity == 1 else f"<t:{last_activity}:R>"
-                        
-                        if member:
-                            user_line = f"• <@{user_id}> ({member.display_name}) - 最後活動: {activity_text}"
+                        if last_activity == 1:
+                            no_record_users.append(user)
                         else:
-                            user_line = f"• <@{user_id}> (已離開伺服器) - 最後活動: {activity_text}"
+                            diving_users.append(user)
+                    
+                    # 先顯示真正潛水的用戶（按照最後活動時間排序，最久沒活動的在最上面）
+                    if diving_users:
+                        diving_users_sorted = sorted(diving_users, key=lambda user: max(user["last_message_time"] or 0, user["last_voice_time"] or 0))
+                        description_lines.append(f"🏊‍♂️ **潛水用戶** ({len(diving_users)} 名)：\n")
                         
-                        description_lines.append(user_line)
+                        for user in diving_users_sorted:
+                            user_id = user["user_id"]
+                            member = guild.get_member(user_id)
+                            
+                            # 計算最後活動時間 (取最近的訊息或語音時間)
+                            last_message = user["last_message_time"] or 0
+                            last_voice = user["last_voice_time"] or 0
+                            last_activity = max(last_message, last_voice)
+                            
+                            if member:
+                                user_line = f"• <@{user_id}> ({member.display_name}) - 最後活動: <t:{last_activity}:R>"
+                            else:
+                                user_line = f"• <@{user_id}> (已離開伺服器) - 最後活動: <t:{last_activity}:R>"
+                            
+                            description_lines.append(user_line)
+                    
+                    # 再顯示沒有聊天紀錄的用戶
+                    if no_record_users:
+                        if diving_users:  # 如果前面有潛水用戶，加個空行分隔
+                            description_lines.append("")
+                        description_lines.append(f"📝 **沒有聊天紀錄** ({len(no_record_users)} 名)：\n")
+                        
+                        for user in no_record_users:
+                            user_id = user["user_id"]
+                            member = guild.get_member(user_id)
+                            
+                            if member:
+                                user_line = f"• <@{user_id}> ({member.display_name}) - 沒有聊天紀錄"
+                            else:
+                                user_line = f"• <@{user_id}> (已離開伺服器) - 沒有聊天紀錄"
+                            
+                            description_lines.append(user_line)
+                    
+                    # 在開頭加上總結
+                    total_count = len(diving_users) + len(no_record_users)
+                    summary = f"發現 **{total_count}** 名用戶（超過 3 天未活動）\n"
+                    description_lines.insert(0, summary)
                     
                     # 當潛水仔太多，可能會超過 Discord 的 description 長度限制 (4096 字元)
                     # 因此需要分割成多個 embed
